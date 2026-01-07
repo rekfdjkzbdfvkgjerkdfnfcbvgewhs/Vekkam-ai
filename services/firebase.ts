@@ -17,6 +17,8 @@ import {
   deleteDoc,
   query,
   orderBy,
+  addDoc,
+  serverTimestamp,
   Firestore 
 } from "firebase/firestore";
 import { UserData, Session } from "../types";
@@ -75,4 +77,23 @@ export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
     sessions.push(doc.data() as Session);
   });
   return sessions;
+};
+
+/**
+ * Saves anonymized feedback for model learning.
+ * Does not include UID to maintain anonymity.
+ */
+export const saveLearningFeedback = async (input: string, output: string, satisfaction: number) => {
+  try {
+    const feedbackRef = collection(db, "ai_learning_data");
+    await addDoc(feedbackRef, {
+      input,
+      output,
+      satisfaction, // 1 for positive, -1 for negative
+      timestamp: serverTimestamp(),
+      tool: 'vekkam_chat_engine'
+    });
+  } catch (err) {
+    console.error("Failed to save learning feedback:", err);
+  }
 };

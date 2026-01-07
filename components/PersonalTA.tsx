@@ -1,15 +1,23 @@
 
 import React, { useState } from 'react';
-import { MessageSquare, Send, Loader2, Sparkles, History } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Sparkles, History, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Session } from '../types';
 import { localAnswerer } from '../services/ai_engine';
+import { saveLearningFeedback } from '../services/firebase';
 
 interface PersonalTAProps {
   sessions: Session[];
 }
 
+interface TAMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  id: string;
+  feedbackGiven?: boolean;
+}
+
 const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [messages, setMessages] = useState<TAMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,24 +25,47 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
     if (!input.trim() || loading) return;
 
     const userMsg = input;
+    const userId = `msg_${Date.now()}`;
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setMessages(prev => [...prev, { role: 'user', content: userMsg, id: userId }]);
     setLoading(true);
 
     try {
-      // Gather all notes from all sessions to provide broad context
       const fullContext = sessions
         .flatMap(s => s.notes)
         .map(n => `Topic: ${n.topic}\nContent: ${n.content}`)
         .join('\n\n---\n\n');
 
       const response = await localAnswerer(userMsg, fullContext || "No study material found in history.");
-      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: response, 
+        id: `ai_${Date.now()}` 
+      }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "I encountered an error while consulting your notes." }]);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "I encountered an error while consulting your notes.",
+        id: `err_${Date.now()}`
+      }]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const submitFeedback = async (messageIndex: number, satisfaction: number) => {
+    const msg = messages[messageIndex];
+    const prevMsg = messages[messageIndex - 1]; // Assume the message before was the user prompt
+    
+    if (msg.role !== 'assistant' || !prevMsg) return;
+
+    // Report feedback (Anonymously)
+    await saveLearningFeedback(prevMsg.content, msg.content, satisfaction);
+
+    // Update UI to show feedback was given
+    setMessages(prev => prev.map((m, i) => 
+      i === messageIndex ? { ...m, feedbackGiven: true } : m
+    ));
   };
 
   return (
@@ -61,13 +92,39 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
           </div>
         ) : (
           messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] p-6 rounded-3xl shadow-sm transition-colors ${
-                m.role === 'user' 
-                  ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-200 dark:shadow-none' 
-                  : 'bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-tl-none'
-              }`}>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className="max-w-[80%] flex flex-col items-end">
+                <div className={`p-6 rounded-3xl shadow-sm transition-colors ${
+                  m.role === 'user' 
+                    ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-200 dark:shadow-none' 
+                    : 'bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-tl-none'
+                }`}>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                </div>
+                {m.role === 'assistant' && !m.feedbackGiven && (
+                  <div className="flex items-center gap-2 mt-2 px-2 animate-in fade-in slide-in-from-top-1 duration-500">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1">Help me learn?</span>
+                    <button 
+                      onClick={() => submitFeedback(i, 1)}
+                      className="p-1.5 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+                      title="Accurate and helpful"
+                    >
+                      <ThumbsUp size={14} />
+                    </button>
+                    <button 
+                      onClick={() => submitFeedback(i, -1)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      title="Incorrect or unhelpful"
+                    >
+                      <ThumbsDown size={14} />
+                    </button>
+                  </div>
+                )}
+                {m.role === 'assistant' && m.feedbackGiven && (
+                   <div className="flex items-center gap-1 mt-2 px-2 text-[10px] font-bold text-emerald-500 uppercase tracking-widest animate-in zoom-in-95">
+                     <Check size={12} /> Thanks!
+                   </div>
+                )}
               </div>
             </div>
           ))

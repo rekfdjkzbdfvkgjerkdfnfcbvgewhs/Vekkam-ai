@@ -1,8 +1,9 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, CheckCircle2 } from 'lucide-react';
+import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Chunk, NoteBlock, UserData } from '../types';
 import { generateLocalOutline, synthesizeLocalNote, localAnswerer, extractTextFromFile, chunkText } from '../services/ai_engine';
+import { saveLearningFeedback } from '../services/firebase';
 import ReactMarkdown from 'react-markdown';
 
 interface NoteEngineProps {
@@ -11,6 +12,12 @@ interface NoteEngineProps {
   setAllChunks: React.Dispatch<React.SetStateAction<Chunk[]>>;
   onSaveSession: (notes: NoteBlock[]) => void;
   savedNotes?: NoteBlock[];
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  feedbackGiven?: boolean;
 }
 
 const NoteEngine: React.FC<NoteEngineProps> = ({ 
@@ -29,7 +36,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [finalNotes, setFinalNotes] = useState<NoteBlock[]>(savedNotes || []);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAnswering, setIsAnswering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,6 +130,19 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     } finally {
       setIsAnswering(false);
     }
+  };
+
+  const submitFeedback = async (messageIndex: number, satisfaction: number) => {
+    const msg = chatMessages[messageIndex];
+    const prevMsg = chatMessages[messageIndex - 1];
+    
+    if (msg.role !== 'assistant' || !prevMsg) return;
+
+    await saveLearningFeedback(prevMsg.content, msg.content, satisfaction);
+
+    setChatMessages(prev => prev.map((m, i) => 
+      i === messageIndex ? { ...m, feedbackGiven: true } : m
+    ));
   };
 
   if (step === 'upload') {
@@ -300,12 +320,37 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           )}
           {chatMessages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[70%] p-4 rounded-3xl text-sm ${
-                m.role === 'user' 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 shadow-sm'
-              }`}>
-                {m.content}
+              <div className="max-w-[70%] flex flex-col items-end">
+                <div className={`p-4 rounded-3xl text-sm ${
+                  m.role === 'user' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 shadow-sm'
+                }`}>
+                  {m.content}
+                </div>
+                {m.role === 'assistant' && !m.feedbackGiven && (
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <button 
+                      onClick={() => submitFeedback(i, 1)}
+                      className="p-1 text-gray-400 hover:text-emerald-500 transition-colors"
+                      title="Helpful"
+                    >
+                      <ThumbsUp size={12} />
+                    </button>
+                    <button 
+                      onClick={() => submitFeedback(i, -1)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Unhelpful"
+                    >
+                      <ThumbsDown size={12} />
+                    </button>
+                  </div>
+                )}
+                {m.role === 'assistant' && m.feedbackGiven && (
+                   <div className="mt-1 px-1 text-[9px] font-bold text-emerald-500 flex items-center gap-1 uppercase tracking-tighter">
+                     <Check size={10} /> Learning
+                   </div>
+                )}
               </div>
             </div>
           ))}
