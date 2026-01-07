@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserInfo, UserData } from '../types';
+import { UserInfo, UserData, Session } from '../types';
 import { 
   LogOut, 
   BookOpen, 
@@ -11,18 +11,17 @@ import {
   ChevronRight,
   ChevronDown,
   Trash2,
-  Crown
+  Sparkles
 } from 'lucide-react';
 
 interface LayoutProps {
   user: UserInfo;
-  userData: UserData;
+  userData: UserData & { sessions: Session[] };
   onLogout: () => void;
   onToolSelect: (tool: string) => void;
   activeTool: string;
   onSessionSelect: (id: string) => void;
   onSessionDelete: (id: string) => void;
-  onUpgradeClick: () => void;
   children: React.ReactNode;
 }
 
@@ -34,7 +33,6 @@ const Layout: React.FC<LayoutProps> = ({
   activeTool, 
   onSessionSelect,
   onSessionDelete,
-  onUpgradeClick,
   children 
 }) => {
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
@@ -50,39 +48,29 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'mastery', name: 'Mastery Engine', icon: Zap },
   ];
 
-  const isPremium = userData.user_tier === 'paid';
-  const remainingCredits = isPremium 
-    ? 3 - userData.daily_analyses_count 
-    : 10 - userData.total_analyses;
-  
-  const totalCredits = isPremium ? 3 : 10;
-  const progressPercent = (remainingCredits / totalCredits) * 100;
-
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar */}
       <aside className="w-80 bg-white border-r border-gray-200 flex flex-col shadow-lg">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">V</div>
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-200">V</div>
             <h1 className="text-xl font-bold tracking-tight text-gray-800">Vekkam</h1>
           </div>
-          {isPremium && (
-            <div className="bg-amber-100 text-amber-700 px-2 py-1 rounded-md flex items-center gap-1">
-              <Crown size={12} className="fill-amber-700" />
-              <span className="text-[10px] font-bold">PRO</span>
-            </div>
-          )}
+          <div className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md flex items-center gap-1">
+            <Sparkles size={12} className="fill-blue-600" />
+            <span className="text-[10px] font-bold">UNLIMITED</span>
+          </div>
         </div>
 
         {/* User Profile */}
-        <div className="p-4 mx-4 my-2 bg-blue-50 rounded-2xl flex items-center gap-4">
+        <div className="p-4 mx-4 my-2 bg-gray-50 rounded-2xl flex items-center gap-4 border border-gray-100">
           <img src={user.picture} alt={user.name} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" />
           <div className="flex-1 overflow-hidden">
             <p className="font-semibold text-gray-900 truncate">{user.given_name}</p>
-            <p className="text-xs text-blue-600 font-medium uppercase tracking-wider">{userData.user_tier} TIER</p>
+            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Free Access Enabled</p>
           </div>
-          <button onClick={onLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors">
+          <button onClick={onLogout} title="Logout" className="p-2 text-gray-400 hover:text-red-600 transition-colors">
             <LogOut size={18} />
           </button>
         </div>
@@ -164,42 +152,11 @@ const Layout: React.FC<LayoutProps> = ({
           </div>
         </nav>
 
-        {/* Tier Info */}
-        <div className="p-4 border-t border-gray-100">
-          {!isPremium && (
-            <button 
-              onClick={onUpgradeClick}
-              className="w-full mb-4 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-200 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
-            >
-              <Crown size={16} /> Upgrade to Pro
-            </button>
-          )}
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-4 rounded-2xl text-white">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-blue-400 uppercase tracking-tighter">Usage Status</span>
-              <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold">
-                {isPremium ? 'DAILY' : 'LIFETIME'}
-              </span>
-            </div>
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-2xl font-bold">{remainingCredits}</p>
-                <p className="text-[10px] text-gray-400 uppercase font-medium">Credits Left</p>
-              </div>
-              <div className="relative w-12 h-12 flex items-center justify-center">
-                 <svg className="absolute w-full h-full transform -rotate-90">
-                    <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-gray-700" />
-                    <circle 
-                      cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" 
-                      className="text-blue-500 transition-all duration-1000"
-                      strokeDasharray={125.6}
-                      strokeDashoffset={125.6 - (125.6 * progressPercent) / 100}
-                    />
-                 </svg>
-                 <Zap size={16} className="text-blue-500 fill-blue-500/20" />
-              </div>
-            </div>
-          </div>
+        <div className="p-6 border-t border-gray-100">
+           <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-widest mb-1">Infinite Limits</p>
+              <p className="text-[10px] text-emerald-600 opacity-75">All features are unlocked for your academic success.</p>
+           </div>
         </div>
       </aside>
 

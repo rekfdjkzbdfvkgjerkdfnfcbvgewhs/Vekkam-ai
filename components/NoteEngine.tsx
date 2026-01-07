@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, Crown, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, CheckCircle2 } from 'lucide-react';
 import { Chunk, NoteBlock, UserData } from '../types';
 import { generateLocalOutline, synthesizeLocalNote, localAnswerer, extractTextFromFile, chunkText } from '../services/ai_engine';
 import ReactMarkdown from 'react-markdown';
@@ -10,7 +10,6 @@ interface NoteEngineProps {
   userData: UserData;
   setAllChunks: React.Dispatch<React.SetStateAction<Chunk[]>>;
   onSaveSession: (notes: NoteBlock[]) => void;
-  onUpgradeRequest: () => void;
   savedNotes?: NoteBlock[];
 }
 
@@ -19,7 +18,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   userData, 
   setAllChunks, 
   onSaveSession, 
-  onUpgradeRequest,
   savedNotes 
 }) => {
   const [step, setStep] = useState<'upload' | 'workspace' | 'synthesizing' | 'results'>(savedNotes ? 'results' : 'upload');
@@ -35,15 +33,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [isAnswering, setIsAnswering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isPremium = userData.user_tier === 'paid';
-  const remainingCredits = isPremium 
-    ? 3 - userData.daily_analyses_count 
-    : 10 - userData.total_analyses;
-  
-  const hasCredits = remainingCredits > 0;
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!hasCredits) return;
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -54,8 +44,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setProcessStatus(`Processing ${file.name}...`);
-        
-        // Proper text extraction
         const extractedText = await extractTextFromFile(file);
         const fileChunks = chunkText(extractedText, `file_${Date.now()}_${i}`);
         newChunks.push(...fileChunks);
@@ -82,7 +70,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         setOutline(result.outline);
         setEditableOutlineText(result.outline.map((o: any) => o.topic).join('\n'));
       } else {
-        // Simple heuristic fallback if AI fails to return structured JSON
         const topics = ["Overview", "Key Concepts", "Deep Dive", "Application", "Conclusion"];
         setEditableOutlineText(topics.join('\n'));
       }
@@ -138,27 +125,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     }
   };
 
-  if (!hasCredits && step === 'upload') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] p-8 text-center">
-         <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mb-8 border-4 border-amber-100 shadow-inner">
-            <AlertCircle size={40} />
-         </div>
-         <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Credit Limit Reached</h2>
-         <p className="text-gray-500 max-w-md mb-8 leading-relaxed">
-           You've exhausted your {isPremium ? 'daily' : 'lifetime free'} analysis credits. 
-           Upgrade to the <strong>Unlocked Tier</strong> to continue outlearning your syllabus.
-         </p>
-         <button 
-           onClick={onUpgradeRequest}
-           className="px-10 py-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl font-bold text-lg hover:scale-105 transition-all shadow-xl shadow-orange-200 flex items-center gap-3"
-         >
-           <Crown size={24} /> Unlock Premium Now
-         </button>
-      </div>
-    );
-  }
-
   if (step === 'upload') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] p-8">
@@ -170,8 +136,8 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           <p className="text-gray-500">Upload your study material (PDF, Image, or Audio) to generate high-impact revision notes.</p>
           
           <div 
-            onClick={() => !isProcessing && hasCredits && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-3xl p-12 bg-white transition-all group ${hasCredits && !isProcessing ? 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer' : 'border-gray-100 opacity-50 cursor-not-allowed'}`}
+            onClick={() => !isProcessing && fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-3xl p-12 bg-white transition-all group ${!isProcessing ? 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer' : 'border-gray-100 opacity-50 cursor-not-allowed'}`}
           >
             <input 
               type="file" 
@@ -180,11 +146,11 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               className="hidden" 
               multiple 
               accept=".pdf,image/*,audio/*"
-              disabled={!hasCredits || isProcessing} 
+              disabled={isProcessing} 
             />
             <div className="flex flex-col items-center gap-4">
-              <div className={`p-4 rounded-2xl transition-colors ${hasCredits && !isProcessing ? 'bg-gray-100 group-hover:bg-blue-100' : 'bg-gray-50'}`}>
-                <File className={`text-gray-400 ${hasCredits && !isProcessing ? 'group-hover:text-blue-600' : ''}`} size={32} />
+              <div className={`p-4 rounded-2xl transition-colors ${!isProcessing ? 'bg-gray-100 group-hover:bg-blue-100' : 'bg-gray-50'}`}>
+                <File className={`text-gray-400 ${!isProcessing ? 'group-hover:text-blue-600' : ''}`} size={32} />
               </div>
               <div className="text-sm font-semibold text-gray-500">
                 {isProcessing ? 'Scanning files...' : 'Click to select files from your device'}
@@ -282,7 +248,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex-1 flex overflow-hidden">
-        {/* Navigation Rail */}
         <div className="w-72 border-r border-gray-100 overflow-y-auto p-6 bg-gray-50/50">
            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6">Study Topics</h3>
            <div className="space-y-2">
@@ -301,7 +266,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
            </div>
         </div>
 
-        {/* Content View */}
         <div className="flex-1 overflow-y-auto p-12">
           {selectedIndex !== null && finalNotes[selectedIndex] ? (
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4">
@@ -323,7 +287,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         </div>
       </div>
 
-      {/* Quick TA Panel */}
       <div className="h-64 border-t border-gray-100 bg-gray-50 flex flex-col">
         <div className="px-8 py-3 border-b border-gray-100 flex items-center gap-2 bg-white">
           <MessageSquare size={16} className="text-blue-600" />

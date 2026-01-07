@@ -1,8 +1,6 @@
 
 import { Genome } from './types';
 
-export const FREE_TIER_LIMIT = 10;
-export const PAID_TIER_DAILY_LIMIT = 3;
 export const CHUNK_SIZE = 500;
 export const CHUNK_OVERLAP = 50;
 
@@ -15,7 +13,7 @@ export const ECON_101_GENOME: Genome = {
       gene_name: "Scarcity",
       difficulty: 1,
       content_alleles: [
-        { type: "text", content: "Scarcity refers to the basic economic problem, the gap between limited – that is, scarce – resources and theoretically limitless wants. This situation requires people to make decisions about how to allocate resources in an efficient way, in order to satisfy as many of their wants as possible." },
+        { type: "text", content: "Scarcity refers to the basic economic problem, the gap between limited – that is, scarce – resources and theoretically limitless wants. This situation requires people to make decisions about how to allocate resources in an efficient way, in order to satisfy as many of their wants as possible. Scarcity is what makes choices necessary. If resources were infinite, there would be no need for economics." },
         { type: "video", url: "https://www.youtube.com/embed/yoVc_S_gd_0" }
       ]
     },
@@ -24,7 +22,7 @@ export const ECON_101_GENOME: Genome = {
       gene_name: "Opportunity Cost",
       difficulty: 2,
       content_alleles: [
-        { type: "text", content: "Opportunity cost is the potential forgone profit from a missed opportunity—the result of choosing one alternative and forgoing another. In short, it’s what you give up when you make a decision." },
+        { type: "text", content: "Opportunity cost is the potential forgone profit from a missed opportunity—the result of choosing one alternative and forgoing another. In short, it’s what you give up when you make a decision. For every choice we make, something else is given up. This 'next best alternative' is the opportunity cost. It's not just about money, but also time and energy." },
         { type: "video", url: "https://www.youtube.com/embed/PSU-SA-Fv_M" }
       ]
     },
@@ -33,7 +31,7 @@ export const ECON_101_GENOME: Genome = {
       gene_name: "Supply and Demand",
       difficulty: 3,
       content_alleles: [
-        { type: "text", content: "Supply and demand is a model of microeconomics. It describes how a price is formed in a market economy. In a competitive market, the unit price for a particular good will vary until it settles at a point where the quantity demanded by consumers equals quantity supplied." },
+        { type: "text", content: "Supply and demand is a model of microeconomics. It describes how a price is formed in a market economy. In a competitive market, the unit price for a particular good will vary until it settles at a point where the quantity demanded by consumers (at the current price) will equal the quantity supplied by producers (at the current price), resulting in an economic equilibrium for price and quantity." },
         { type: "video", url: "https://www.youtube.com/embed/9QSWLmyGpYc" }
       ]
     }

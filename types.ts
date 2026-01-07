@@ -1,6 +1,4 @@
 
-export type UserTier = 'free' | 'paid';
-
 export interface UserInfo {
   id: string;
   name: string;
@@ -22,13 +20,9 @@ export interface Session {
   notes: NoteBlock[];
 }
 
-// Root user metadata
+// Simplified user metadata
 export interface UserData {
-  user_tier: UserTier;
   total_analyses: number;
-  last_analysis_date: string | null;
-  daily_analyses_count: number;
-  // Note: sessions are now in a subcollection
 }
 
 export interface Chunk {

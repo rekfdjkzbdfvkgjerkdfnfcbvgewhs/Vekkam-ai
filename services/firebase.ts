@@ -12,7 +12,6 @@ import {
   doc, 
   setDoc, 
   getDoc, 
-  updateDoc,
   collection, 
   getDocs, 
   deleteDoc,
@@ -39,9 +38,6 @@ export const db: Firestore = getFirestore(app);
 
 export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
 
-/**
- * Ensures a user document exists in Firestore and returns the data.
- */
 export const ensureUserDoc = async (uid: string, initialData: UserData): Promise<UserData> => {
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef);
@@ -54,34 +50,21 @@ export const ensureUserDoc = async (uid: string, initialData: UserData): Promise
   return userSnap.data() as UserData;
 };
 
-/**
- * Updates root user metadata (Tier, Credits, etc.)
- */
 export const updateFirestoreUser = async (uid: string, data: Partial<UserData>) => {
   const userRef = doc(db, "users", uid);
   await setDoc(userRef, data, { merge: true });
 };
 
-/**
- * Saves a study session to the user's sessions subcollection.
- * Using a separate document per session ensures we never hit the 1MB per-doc limit.
- */
 export const saveFirestoreSession = async (uid: string, session: Session) => {
   const sessionRef = doc(db, "users", uid, "sessions", session.id);
   await setDoc(sessionRef, session);
 };
 
-/**
- * Deletes a specific session.
- */
 export const deleteFirestoreSession = async (uid: string, sessionId: string) => {
   const sessionRef = doc(db, "users", uid, "sessions", sessionId);
   await deleteDoc(sessionRef);
 };
 
-/**
- * Fetches all sessions for a user, ordered by timestamp.
- */
 export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
   const sessionsRef = collection(db, "users", uid, "sessions");
   const q = query(sessionsRef, orderBy("timestamp", "desc"));

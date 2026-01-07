@@ -3,10 +3,13 @@ import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Layout from './components/Layout';
 import NoteEngine from './components/NoteEngine';
-import CheckoutModal from './components/CheckoutModal';
 import AuthOverlay from './components/AuthOverlay';
+import PoliciesView from './components/PoliciesView';
+import PersonalTA from './components/PersonalTA';
+import MockTestGenerator from './components/MockTestGenerator';
+import MasteryEngine from './components/MasteryEngine';
 import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
-import { MessageSquare, FileText, Zap, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { 
   auth, 
   db, 
@@ -23,18 +26,15 @@ import { Analytics } from "@vercel/analytics/react";
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [authMode, setAuthMode] = useState<'none' | 'login' | 'signup'>('none');
+  const [view, setView] = useState<'app' | 'policies'>('app');
   const [user, setUser] = useState<UserInfo | null>(null);
   const [userData, setUserData] = useState<UserData>({
-    user_tier: 'free',
-    total_analyses: 0,
-    last_analysis_date: null,
-    daily_analyses_count: 0
+    total_analyses: 0
   });
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
-  const [showCheckout, setShowCheckout] = useState(false);
 
   // Auth Listener
   useEffect(() => {
@@ -49,34 +49,19 @@ const App: React.FC = () => {
         };
         setUser(userInfo);
 
-        const today = new Date().toDateString();
         const initialData: UserData = {
-          user_tier: 'free',
-          total_analyses: 0,
-          last_analysis_date: today,
-          daily_analyses_count: 0
+          total_analyses: 0
         };
         
         try {
-          // Initialize/Get Profile
           await ensureUserDoc(firebaseUser.uid, initialData);
-
-          // Get Initial Sessions List
           const userSessions = await getFirestoreSessions(firebaseUser.uid);
           setSessions(userSessions);
 
-          // Real-time Metadata Sync (Tier, Credits)
           const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data() as UserData;
-              if (data.last_analysis_date !== today) {
-                updateFirestoreUser(firebaseUser.uid, {
-                  daily_analyses_count: 0,
-                  last_analysis_date: today
-                });
-              } else {
-                setUserData(data);
-              }
+              setUserData(data);
             }
           });
 
@@ -102,6 +87,7 @@ const App: React.FC = () => {
       setAllChunks([]);
       setSessions([]);
       setActiveSessionNotes(undefined);
+      setActiveTool('notes');
     } catch (error) {
       console.error("Logout failed:", error);
     }
@@ -118,16 +104,10 @@ const App: React.FC = () => {
     };
 
     try {
-      // 1. Save to Subcollection
       await saveFirestoreSession(user.id, newSession);
-      
-      // 2. Update Credits in Root Doc
       await updateFirestoreUser(user.id, {
-        total_analyses: userData.total_analyses + 1,
-        daily_analyses_count: userData.daily_analyses_count + 1
+        total_analyses: (userData.total_analyses || 0) + 1
       });
-
-      // 3. Update local state
       setSessions(prev => [newSession, ...prev]);
     } catch (err) {
       console.error("Failed to save session:", err);
@@ -147,15 +127,12 @@ const App: React.FC = () => {
     try {
       await deleteFirestoreSession(user.id, id);
       setSessions(prev => prev.filter(s => s.id !== id));
+      if (activeSessionNotes && activeSessionNotes[0]?.topic === sessions.find(s => s.id === id)?.notes[0]?.topic) {
+        setActiveSessionNotes(undefined);
+      }
     } catch (err) {
       console.error("Failed to delete session:", err);
     }
-  };
-
-  const handleUpgradeSuccess = async (tier: 'paid') => {
-    if (!user) return;
-    await updateFirestoreUser(user.id, { user_tier: tier });
-    setShowCheckout(false);
   };
 
   if (loading) {
@@ -167,13 +144,17 @@ const App: React.FC = () => {
     );
   }
 
+  if (view === 'policies') {
+    return <PoliciesView onBack={() => setView('app')} />;
+  }
+
   if (!user) {
     return (
       <>
         <Analytics />
         <LandingPage 
           onLogin={() => setAuthMode('login')} 
-          onViewPolicies={() => alert('Policies view requested')} 
+          onViewPolicies={() => setView('policies')} 
         />
         {authMode !== 'none' && (
           <AuthOverlay 
@@ -185,7 +166,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Inject sessions into Layout props via a mapped structure or by passing directly
   const layoutUserData = { ...userData, sessions };
 
   return (
@@ -199,7 +179,6 @@ const App: React.FC = () => {
         activeTool={activeTool}
         onSessionSelect={handleSessionSelect}
         onSessionDelete={handleSessionDelete}
-        onUpgradeClick={() => setShowCheckout(true)}
       >
         <div className="h-full">
           {activeTool === 'notes' && (
@@ -208,47 +187,20 @@ const App: React.FC = () => {
               userData={userData}
               setAllChunks={setAllChunks} 
               onSaveSession={handleSaveSession}
-              onUpgradeRequest={() => setShowCheckout(true)}
               savedNotes={activeSessionNotes}
             />
           )}
           {activeTool === 'ta' && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-4">
-                <MessageSquare size={48} className="mx-auto text-blue-600 mb-6" />
-                <h2 className="text-3xl font-bold">Personal TA</h2>
-                <p className="text-gray-500 max-w-sm">Chat across all your saved sessions and get instant clarity on complex topics using your own study context.</p>
-              </div>
-            </div>
+            <PersonalTA sessions={sessions} />
           )}
           {activeTool === 'mock' && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-4">
-                <FileText size={48} className="mx-auto text-blue-600 mb-6" />
-                <h2 className="text-3xl font-bold">Mock Test Generator</h2>
-                <p className="text-gray-500 max-w-sm">Test your knowledge across MCQ, VSA, SA, and LA formats to identify your weak points before the real exam.</p>
-              </div>
-            </div>
+            <MockTestGenerator />
           )}
           {activeTool === 'mastery' && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-4">
-                <Zap size={48} className="mx-auto text-blue-600 mb-6" />
-                <h2 className="text-3xl font-bold">Mastery Engine</h2>
-                <p className="text-gray-500 max-w-sm">Visualize your syllabus as a skill tree and master concepts through targeted boss battles.</p>
-              </div>
-            </div>
+            <MasteryEngine chunks={allChunks} />
           )}
         </div>
       </Layout>
-
-      {showCheckout && (
-        <CheckoutModal 
-          user={user}
-          onClose={() => setShowCheckout(false)} 
-          onSuccess={handleUpgradeSuccess} 
-        />
-      )}
     </>
   );
 };
