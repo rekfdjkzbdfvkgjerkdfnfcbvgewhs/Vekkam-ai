@@ -129,15 +129,15 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] p-8">
         <div className="w-full max-w-xl text-center space-y-6">
-          <div className="w-20 h-20 bg-blue-100 rounded-3xl flex items-center justify-center text-blue-600 mx-auto animate-bounce-slow">
+          <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto animate-bounce-slow">
             <Upload size={32} />
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900">Note & Lesson Engine</h2>
-          <p className="text-gray-500">Upload your study material (PDF, Image, or Audio) to generate high-impact revision notes.</p>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Note & Lesson Engine</h2>
+          <p className="text-gray-500 dark:text-gray-400">Upload your study material (PDF, Image, or Audio) to generate high-impact revision notes.</p>
           
           <div 
             onClick={() => !isProcessing && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-3xl p-12 bg-white transition-all group ${!isProcessing ? 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer' : 'border-gray-100 opacity-50 cursor-not-allowed'}`}
+            className={`border-2 border-dashed rounded-3xl p-12 bg-white dark:bg-gray-900 transition-all group ${!isProcessing ? 'border-gray-200 dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 cursor-pointer' : 'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed'}`}
           >
             <input 
               type="file" 
@@ -149,18 +149,18 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               disabled={isProcessing} 
             />
             <div className="flex flex-col items-center gap-4">
-              <div className={`p-4 rounded-2xl transition-colors ${!isProcessing ? 'bg-gray-100 group-hover:bg-blue-100' : 'bg-gray-50'}`}>
-                <File className={`text-gray-400 ${!isProcessing ? 'group-hover:text-blue-600' : ''}`} size={32} />
+              <div className={`p-4 rounded-2xl transition-colors ${!isProcessing ? 'bg-gray-100 dark:bg-gray-800 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40' : 'bg-gray-50 dark:bg-gray-900'}`}>
+                <File className={`text-gray-400 dark:text-gray-500 ${!isProcessing ? 'group-hover:text-blue-600 dark:group-hover:text-blue-400' : ''}`} size={32} />
               </div>
-              <div className="text-sm font-semibold text-gray-500">
+              <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">
                 {isProcessing ? 'Scanning files...' : 'Click to select files from your device'}
               </div>
-              <div className="text-xs text-gray-400">PDF, JPG, PNG, MP3, WAV supported</div>
+              <div className="text-xs text-gray-400 dark:text-gray-600">PDF, JPG, PNG, MP3, WAV supported</div>
             </div>
           </div>
           
           {isProcessing && (
-            <div className="bg-blue-50 p-6 rounded-2xl flex items-center gap-4 text-blue-700 animate-in fade-in slide-in-from-top-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl flex items-center gap-4 text-blue-700 dark:text-blue-400 animate-in fade-in slide-in-from-top-4">
               <Loader2 className="animate-spin" />
               <div className="text-left">
                 <p className="font-bold text-sm">Deep Intelligence at work</p>
@@ -178,12 +178,12 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
         <header className="flex justify-between items-end">
           <div>
-            <div className="flex items-center gap-2 text-emerald-600 mb-1">
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
               <CheckCircle2 size={16} />
               <span className="text-xs font-bold uppercase tracking-wider">Content Extracted Successfully</span>
             </div>
-            <h2 className="text-3xl font-extrabold text-gray-900">Vekkam Workspace</h2>
-            <p className="text-gray-500">Review your content and prepare for synthesis.</p>
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Vekkam Workspace</h2>
+            <p className="text-gray-500 dark:text-gray-400">Review your content and prepare for synthesis.</p>
           </div>
           <button 
             onClick={handleGenerateOutline}
@@ -197,30 +197,30 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
 
         <div className="grid md:grid-cols-2 gap-8">
           <div className="space-y-4">
-            <h3 className="text-lg font-bold flex items-center gap-2"><Settings size={20} /> Content Strategy</h3>
+            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><Settings size={20} /> Content Strategy</h3>
             <textarea
               value={editableOutlineText}
               onChange={(e) => setEditableOutlineText(e.target.value)}
               placeholder="Your outline will appear here. You can also manually add topics..."
-              className="w-full h-80 p-6 bg-white border border-gray-200 rounded-3xl text-gray-700 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all resize-none font-medium"
+              className="w-full h-80 p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl text-gray-700 dark:text-gray-300 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all resize-none font-medium"
             />
           </div>
           <div className="space-y-4">
-            <h3 className="text-lg font-bold flex items-center gap-2"><ArrowRight size={20} /> Instructions (Optional)</h3>
+            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><ArrowRight size={20} /> Instructions (Optional)</h3>
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="e.g. 'Explain like I'm 15' or 'Focus on technical formulas'..."
-              className="w-full h-40 p-6 bg-white border border-gray-200 rounded-3xl text-gray-700 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all resize-none font-medium"
+              className="w-full h-40 p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl text-gray-700 dark:text-gray-300 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all resize-none font-medium"
             />
-            <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
-               <h4 className="font-bold text-amber-800 mb-2">Pro Tip</h4>
-               <p className="text-sm text-amber-700">Adding specific instructions helps the AI prioritize the right level of depth for your upcoming exam.</p>
+            <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-3xl border border-amber-100 dark:border-amber-900/30">
+               <h4 className="font-bold text-amber-800 dark:text-amber-500 mb-2">Pro Tip</h4>
+               <p className="text-sm text-amber-700 dark:text-amber-600">Adding specific instructions helps the AI prioritize the right level of depth for your upcoming exam.</p>
             </div>
             <button 
               onClick={handleSynthesize}
               disabled={!editableOutlineText.trim()}
-              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-lg hover:bg-gray-800 transition-all shadow-xl shadow-gray-200 disabled:opacity-50"
+              className="w-full py-4 bg-gray-900 dark:bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-gray-800 dark:hover:bg-blue-700 transition-all shadow-xl shadow-gray-200 dark:shadow-blue-900/20 disabled:opacity-50"
             >
               Synthesize Unified Notes
             </button>
@@ -234,29 +234,31 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] p-8 text-center space-y-6">
         <div className="relative">
-          <div className="w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center text-blue-600">
+          <div className="w-24 h-24 border-4 border-blue-100 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Wand2 size={24} />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-gray-900">Multimodal Synthesis In Progress...</h2>
-        <p className="text-gray-500 max-w-sm">We're weaving your study material into a cohesive learning experience using our multimodal engine.</p>
+        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Multimodal Synthesis In Progress...</h2>
+        <p className="text-gray-500 dark:text-gray-400 max-w-sm">We're weaving your study material into a cohesive learning experience using our multimodal engine.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-72 border-r border-gray-100 overflow-y-auto p-6 bg-gray-50/50">
-           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6">Study Topics</h3>
+        <div className="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto p-6 bg-gray-50/50 dark:bg-gray-900/50">
+           <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6">Study Topics</h3>
            <div className="space-y-2">
              {finalNotes.map((note, idx) => (
                <button
                  key={idx}
                  onClick={() => setSelectedIndex(idx)}
                  className={`w-full text-left p-4 rounded-2xl transition-all duration-200 group flex items-center justify-between ${
-                   selectedIndex === idx ? 'bg-white shadow-md border border-gray-100 text-blue-600' : 'text-gray-600 hover:bg-white/50'
+                   selectedIndex === idx 
+                   ? 'bg-white dark:bg-gray-800 shadow-md border border-gray-100 dark:border-gray-700 text-blue-600 dark:text-blue-400' 
+                   : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-gray-800/50'
                  }`}
                >
                  <span className="font-semibold text-sm truncate">{note.topic}</span>
@@ -270,16 +272,16 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           {selectedIndex !== null && finalNotes[selectedIndex] ? (
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">Module {selectedIndex + 1}</span>
-                <button className="p-2 text-gray-400 hover:text-blue-600"><Save size={20} /></button>
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase">Module {selectedIndex + 1}</span>
+                <button className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Save size={20} /></button>
               </div>
-              <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">{finalNotes[selectedIndex].topic}</h2>
-              <div className="prose prose-blue max-w-none prose-headings:font-extrabold prose-p:text-gray-600 prose-p:leading-relaxed">
+              <h2 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">{finalNotes[selectedIndex].topic}</h2>
+              <div className="prose prose-blue dark:prose-invert max-w-none prose-headings:font-extrabold prose-p:text-gray-600 dark:prose-p:text-gray-400 prose-p:leading-relaxed transition-colors">
                 <ReactMarkdown>{finalNotes[selectedIndex].content}</ReactMarkdown>
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600">
                <BookOpen size={48} className="mb-4 opacity-20" />
                <p>Select a topic from the sidebar to start learning</p>
             </div>
@@ -287,25 +289,27 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         </div>
       </div>
 
-      <div className="h-64 border-t border-gray-100 bg-gray-50 flex flex-col">
-        <div className="px-8 py-3 border-b border-gray-100 flex items-center gap-2 bg-white">
-          <MessageSquare size={16} className="text-blue-600" />
-          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Contextual Chat</span>
+      <div className="h-64 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors">
+        <div className="px-8 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2 bg-white dark:bg-gray-900/80">
+          <MessageSquare size={16} className="text-blue-600 dark:text-blue-400" />
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Contextual Chat</span>
         </div>
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-4">
           {chatMessages.length === 0 && (
-            <p className="text-center text-sm text-gray-400 pt-4">Ask a question about your newly generated notes...</p>
+            <p className="text-center text-sm text-gray-400 dark:text-gray-600 pt-4">Ask a question about your newly generated notes...</p>
           )}
           {chatMessages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[70%] p-4 rounded-3xl text-sm ${
-                m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-700 shadow-sm'
+                m.role === 'user' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 shadow-sm'
               }`}>
                 {m.content}
               </div>
             </div>
           ))}
-          {isAnswering && <div className="text-xs text-blue-600 animate-pulse">TA is thinking...</div>}
+          {isAnswering && <div className="text-xs text-blue-600 dark:text-blue-400 animate-pulse px-4">TA is thinking...</div>}
         </div>
         <div className="px-8 pb-8">
            <div className="relative">
@@ -315,7 +319,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleChat()}
               placeholder="Ask anything about this session..."
-              className="w-full pl-6 pr-12 py-3 bg-white border border-gray-200 rounded-2xl outline-none focus:border-blue-400 transition-colors shadow-sm"
+              className="w-full pl-6 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl outline-none focus:border-blue-400 dark:focus:border-blue-600 transition-colors shadow-sm"
              />
              <button onClick={handleChat} className="absolute right-2 top-1.5 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                <ArrowRight size={18} />

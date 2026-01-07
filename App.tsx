@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [authMode, setAuthMode] = useState<'none' | 'login' | 'signup'>('none');
   const [view, setView] = useState<'app' | 'policies'>('app');
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [userData, setUserData] = useState<UserData>({
     total_analyses: 0
   });
@@ -35,6 +36,17 @@ const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
+
+  // Dark mode effect
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
 
   // Auth Listener
   useEffect(() => {
@@ -137,9 +149,9 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-600" size={48} />
-        <p className="text-gray-500 font-medium">Synchronizing Workspace...</p>
+        <p className="text-gray-500 dark:text-gray-400 font-medium">Synchronizing Workspace...</p>
       </div>
     );
   }
@@ -179,6 +191,8 @@ const App: React.FC = () => {
         activeTool={activeTool}
         onSessionSelect={handleSessionSelect}
         onSessionDelete={handleSessionDelete}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
       >
         <div className="h-full">
           {activeTool === 'notes' && (

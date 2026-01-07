@@ -31,12 +31,12 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
   };
 
   return (
-    <div className="flex h-full bg-white">
+    <div className="flex h-full bg-white dark:bg-gray-950 transition-colors">
       {/* Skill Tree Rail */}
-      <div className="w-80 border-r border-gray-100 flex flex-col">
-        <div className="p-8 border-b border-gray-100">
-          <h2 className="text-2xl font-extrabold text-gray-900 mb-1">Skill Tree</h2>
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{genome.subject}</p>
+      <div className="w-80 border-r border-gray-100 dark:border-gray-800 flex flex-col transition-colors">
+        <div className="p-8 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100 mb-1">Skill Tree</h2>
+          <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">{genome.subject}</p>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
           {genome.nodes.map((node, i) => {
@@ -47,24 +47,26 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
                   onClick={() => status !== 'locked' && setSelectedNodeId(node.gene_id)}
                   className={`w-full p-5 rounded-2xl text-left transition-all duration-300 flex items-center gap-4 ${
                     selectedNodeId === node.gene_id 
-                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-200' 
+                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-200 dark:shadow-none' 
                       : status === 'locked' 
-                        ? 'opacity-50 grayscale cursor-not-allowed bg-gray-50 text-gray-400'
-                        : 'bg-white border border-gray-100 text-gray-700 hover:border-blue-400'
+                        ? 'opacity-50 grayscale cursor-not-allowed bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600'
+                        : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-600'
                   }`}
                 >
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    status === 'mastered' ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                    status === 'mastered' 
+                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' 
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
                   }`}>
                     {status === 'mastered' ? <CheckCircle size={20} /> : status === 'locked' ? <Lock size={18} /> : <Zap size={20} />}
                   </div>
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-tighter opacity-60">Level {node.difficulty}</p>
+                  <div className="overflow-hidden">
+                    <p className={`text-[10px] font-bold uppercase tracking-tighter opacity-60 transition-colors ${selectedNodeId === node.gene_id ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`}>Level {node.difficulty}</p>
                     <p className="font-bold truncate">{node.gene_name}</p>
                   </div>
                 </button>
                 {i < genome.nodes.length - 1 && (
-                  <div className="h-6 w-0.5 bg-gray-100 mx-auto my-1"></div>
+                  <div className="h-6 w-0.5 bg-gray-100 dark:bg-gray-800 mx-auto my-1"></div>
                 )}
               </div>
             );
@@ -73,22 +75,22 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
       </div>
 
       {/* Content Viewer */}
-      <div className="flex-1 overflow-y-auto p-12 bg-gray-50/30">
+      <div className="flex-1 overflow-y-auto p-12 bg-gray-50/30 dark:bg-gray-950 transition-colors">
         {selectedNode ? (
-          <div className="max-w-3xl mx-auto space-y-12 animate-in fade-in slide-in-from-right-4">
+          <div className="max-w-3xl mx-auto space-y-12 animate-in fade-in slide-in-from-right-4 duration-500">
             <header className="space-y-4">
                <div className="flex items-center gap-3">
-                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold uppercase tracking-widest">Concept Genome</span>
-                 <div className="h-px flex-1 bg-gray-100"></div>
+                 <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-[10px] font-bold uppercase tracking-widest">Concept Genome</span>
+                 <div className="h-px flex-1 bg-gray-100 dark:bg-gray-800"></div>
                </div>
-               <h2 className="text-5xl font-extrabold text-gray-900 tracking-tight">{selectedNode.gene_name}</h2>
+               <h2 className="text-5xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">{selectedNode.gene_name}</h2>
             </header>
 
             <div className="space-y-10">
               {selectedNode.content_alleles.map((allele, i) => (
-                <div key={i} className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 space-y-6">
+                <div key={i} className="bg-white dark:bg-gray-900 p-10 rounded-[3rem] shadow-sm border border-gray-100 dark:border-gray-800 space-y-6 transition-colors">
                   {allele.type === 'text' ? (
-                    <div className="prose prose-blue max-w-none text-gray-600 leading-relaxed">
+                    <div className="prose prose-blue dark:prose-invert max-w-none text-gray-600 dark:text-gray-400 leading-relaxed transition-colors">
                       {allele.content}
                     </div>
                   ) : (
@@ -109,11 +111,11 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
             </div>
 
             <div className="flex flex-col items-center gap-6 pt-12">
-               <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 text-center space-y-2 max-w-md">
-                  <h4 className="font-extrabold text-blue-900 flex items-center justify-center gap-2">
+               <div className="p-6 bg-blue-50 dark:bg-blue-900/10 rounded-3xl border border-blue-100 dark:border-blue-900/30 text-center space-y-2 max-w-md">
+                  <h4 className="font-extrabold text-blue-900 dark:text-blue-300 flex items-center justify-center gap-2">
                     <Sparkles size={18} /> Boss Battle Mode
                   </h4>
-                  <p className="text-sm text-blue-700">Master this concept by answering a high-stakes question tailored to your progress.</p>
+                  <p className="text-sm text-blue-700 dark:text-blue-500">Master this concept by answering a high-stakes question tailored to your progress.</p>
                </div>
                
                <button
@@ -122,7 +124,7 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
                  className={`px-12 py-5 rounded-2xl font-extrabold text-xl shadow-xl transition-all flex items-center gap-3 ${
                    progress[selectedNode.gene_id] === 'mastered'
                     ? 'bg-emerald-500 text-white cursor-default'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 active:scale-95 shadow-blue-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 active:scale-95 shadow-blue-200 dark:shadow-none'
                  }`}
                >
                  {progress[selectedNode.gene_id] === 'mastered' ? (
@@ -135,11 +137,11 @@ const MasteryEngine: React.FC<MasteryEngineProps> = ({ chunks }) => {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-6">
-             <div className="w-24 h-24 bg-white rounded-[2rem] shadow-xl flex items-center justify-center text-blue-600 border border-gray-100">
-               <Zap size={40} className="fill-blue-600/10" />
+             <div className="w-24 h-24 bg-white dark:bg-gray-900 rounded-[2rem] shadow-xl flex items-center justify-center text-blue-600 dark:text-blue-400 border border-gray-100 dark:border-gray-800 transition-colors">
+               <Zap size={40} className="fill-blue-600/10 dark:fill-blue-400/10" />
              </div>
-             <h3 className="text-2xl font-extrabold text-gray-900">Select a concept to begin mastery</h3>
-             <p className="text-gray-400 max-w-sm">Follow the skill tree from the roots to the branches to build an unbreakable knowledge base.</p>
+             <h3 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">Select a concept to begin mastery</h3>
+             <p className="text-gray-400 dark:text-gray-500 max-w-sm">Follow the skill tree from the roots to the branches to build an unbreakable knowledge base.</p>
           </div>
         )}
       </div>

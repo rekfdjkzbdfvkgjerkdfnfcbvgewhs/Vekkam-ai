@@ -38,51 +38,51 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white z-10">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
+      <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-950 z-10">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900">Personal TA</h2>
-          <p className="text-gray-500">Your dedicated tutor, powered by your entire study history.</p>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Personal TA</h2>
+          <p className="text-gray-500 dark:text-gray-400">Your dedicated tutor, powered by your entire study history.</p>
         </div>
-        <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-2xl">
-          <History size={18} className="text-blue-600" />
-          <span className="text-sm font-bold text-blue-700">{sessions.length} Sessions Connected</span>
+        <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-2xl">
+          <History size={18} className="text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{sessions.length} Sessions Connected</span>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-sm mx-auto">
-            <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 mb-4 animate-pulse">
+            <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 animate-pulse">
               <Sparkles size={32} />
             </div>
-            <h3 className="text-xl font-bold text-gray-900">Ask your TA anything</h3>
-            <p className="text-gray-500 text-sm">"How does photosynthesis relate to the carbon cycle we studied last week?"</p>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Ask your TA anything</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">"How does photosynthesis relate to the carbon cycle we studied last week?"</p>
           </div>
         ) : (
           messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] p-6 rounded-3xl shadow-sm ${
+              <div className={`max-w-[80%] p-6 rounded-3xl shadow-sm transition-colors ${
                 m.role === 'user' 
-                  ? 'bg-blue-600 text-white rounded-tr-none' 
-                  : 'bg-white border border-gray-100 text-gray-700 rounded-tl-none'
+                  ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-200 dark:shadow-none' 
+                  : 'bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-tl-none'
               }`}>
-                <p className="text-sm leading-relaxed">{m.content}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
               </div>
             </div>
           ))
         )}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-gray-50 border border-gray-100 p-6 rounded-3xl rounded-tl-none flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin text-blue-600" />
-              <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">TA is thinking...</span>
+            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-6 rounded-3xl rounded-tl-none flex items-center gap-3">
+              <Loader2 size={16} className="animate-spin text-blue-600 dark:text-blue-400" />
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">TA is thinking...</span>
             </div>
           </div>
         ) }
       </div>
 
-      <div className="p-8 border-t border-gray-100 bg-white">
+      <div className="p-8 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950 transition-colors">
         <div className="max-w-4xl mx-auto relative">
           <input
             type="text"
@@ -90,12 +90,12 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Search your knowledge base..."
-            className="w-full pl-6 pr-16 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all font-medium"
+            className="w-full pl-6 pr-16 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/10 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all font-medium"
           />
           <button 
             onClick={handleSend}
             disabled={!input.trim() || loading}
-            className="absolute right-2 top-2 p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+            className="absolute right-2 top-2 p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50"
           >
             <Send size={20} />
           </button>
