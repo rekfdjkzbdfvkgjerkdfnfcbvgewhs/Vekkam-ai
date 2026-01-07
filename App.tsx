@@ -18,7 +18,7 @@ import {
 } from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { Analytics } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/react";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
