@@ -11,7 +11,7 @@ import {
   ChevronRight,
   ChevronDown,
   Trash2,
-  Edit2
+  Crown
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -22,6 +22,7 @@ interface LayoutProps {
   activeTool: string;
   onSessionSelect: (id: string) => void;
   onSessionDelete: (id: string) => void;
+  onUpgradeClick: () => void;
   children: React.ReactNode;
 }
 
@@ -33,6 +34,7 @@ const Layout: React.FC<LayoutProps> = ({
   activeTool, 
   onSessionSelect,
   onSessionDelete,
+  onUpgradeClick,
   children 
 }) => {
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
@@ -48,13 +50,29 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'mastery', name: 'Mastery Engine', icon: Zap },
   ];
 
+  const isPremium = userData.user_tier === 'paid';
+  const remainingCredits = isPremium 
+    ? 3 - userData.daily_analyses_count 
+    : 10 - userData.total_analyses;
+  
+  const totalCredits = isPremium ? 3 : 10;
+  const progressPercent = (remainingCredits / totalCredits) * 100;
+
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar */}
       <aside className="w-80 bg-white border-r border-gray-200 flex flex-col shadow-lg">
-        <div className="p-6 border-b border-gray-100 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">V</div>
-          <h1 className="text-xl font-bold tracking-tight text-gray-800">Vekkam Engine</h1>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">V</div>
+            <h1 className="text-xl font-bold tracking-tight text-gray-800">Vekkam</h1>
+          </div>
+          {isPremium && (
+            <div className="bg-amber-100 text-amber-700 px-2 py-1 rounded-md flex items-center gap-1">
+              <Crown size={12} className="fill-amber-700" />
+              <span className="text-[10px] font-bold">PRO</span>
+            </div>
+          )}
         </div>
 
         {/* User Profile */}
@@ -62,7 +80,7 @@ const Layout: React.FC<LayoutProps> = ({
           <img src={user.picture} alt={user.name} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" />
           <div className="flex-1 overflow-hidden">
             <p className="font-semibold text-gray-900 truncate">{user.given_name}</p>
-            <p className="text-xs text-blue-600 font-medium">{userData.user_tier.toUpperCase()} TIER</p>
+            <p className="text-xs text-blue-600 font-medium uppercase tracking-wider">{userData.user_tier} TIER</p>
           </div>
           <button onClick={onLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors">
             <LogOut size={18} />
@@ -148,25 +166,37 @@ const Layout: React.FC<LayoutProps> = ({
 
         {/* Tier Info */}
         <div className="p-4 border-t border-gray-100">
+          {!isPremium && (
+            <button 
+              onClick={onUpgradeClick}
+              className="w-full mb-4 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-200 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
+            >
+              <Crown size={16} /> Upgrade to Pro
+            </button>
+          )}
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-4 rounded-2xl text-white">
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-blue-400 uppercase tracking-tighter">Usage Status</span>
-              {userData.user_tier === 'free' && (
-                <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold">UPGRADE</span>
-              )}
+              <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold">
+                {isPremium ? 'DAILY' : 'LIFETIME'}
+              </span>
             </div>
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-2xl font-bold">
-                  {userData.user_tier === 'free' 
-                    ? 10 - userData.total_analyses 
-                    : 3 - userData.daily_analyses_count
-                  }
-                </p>
-                <p className="text-[10px] text-gray-400 uppercase font-medium">Remaining Credits</p>
+                <p className="text-2xl font-bold">{remainingCredits}</p>
+                <p className="text-[10px] text-gray-400 uppercase font-medium">Credits Left</p>
               </div>
-              <div className="w-12 h-12 flex items-center justify-center">
-                 <Zap size={24} className="text-blue-500 fill-blue-500/20" />
+              <div className="relative w-12 h-12 flex items-center justify-center">
+                 <svg className="absolute w-full h-full transform -rotate-90">
+                    <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-gray-700" />
+                    <circle 
+                      cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" 
+                      className="text-blue-500 transition-all duration-1000"
+                      strokeDasharray={125.6}
+                      strokeDashoffset={125.6 - (125.6 * progressPercent) / 100}
+                    />
+                 </svg>
+                 <Zap size={16} className="text-blue-500 fill-blue-500/20" />
               </div>
             </div>
           </div>

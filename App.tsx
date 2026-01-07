@@ -3,11 +3,15 @@ import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Layout from './components/Layout';
 import NoteEngine from './components/NoteEngine';
+import CheckoutModal from './components/CheckoutModal';
 import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
-import { MessageSquare, FileText, Zap } from 'lucide-react';
+import { MessageSquare, FileText, Zap, Loader2 } from 'lucide-react';
+import { auth, googleProvider, db, updateFirestoreUser, ensureUserDoc } from './services/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [userData, setUserData] = useState<UserData>({
     sessions: [],
@@ -19,55 +23,83 @@ const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
+  const [showCheckout, setShowCheckout] = useState(false);
 
-  // Initialize data from localStorage
+  // Auth Listener
   useEffect(() => {
-    const savedUser = localStorage.getItem('vekkam_user');
-    const savedData = localStorage.getItem('vekkam_data');
-    if (savedUser && savedData) {
-      setUser(JSON.parse(savedUser));
-      setUserData(JSON.parse(savedData));
-      setIsAuthenticated(true);
-    }
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userInfo: UserInfo = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Student',
+          given_name: firebaseUser.displayName?.split(' ')[0] || 'Student',
+          email: firebaseUser.email || '',
+          picture: firebaseUser.photoURL || `https://picsum.photos/100/100?seed=${firebaseUser.uid}`
+        };
+        setUser(userInfo);
+
+        // Ensure user data exists in Firestore
+        const today = new Date().toDateString();
+        const initialData: UserData = {
+          sessions: [],
+          user_tier: 'free',
+          total_analyses: 0,
+          last_analysis_date: today,
+          daily_analyses_count: 0
+        };
+        
+        await ensureUserDoc(firebaseUser.uid, initialData);
+
+        // Set up real-time Firestore listener for this user
+        const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserData;
+            
+            // Check for daily reset locally
+            if (data.last_analysis_date !== today) {
+              updateFirestoreUser(firebaseUser.uid, {
+                daily_analyses_count: 0,
+                last_analysis_date: today
+              });
+            } else {
+              setUserData(data);
+            }
+          }
+        });
+
+        setLoading(false);
+        return () => unsubDoc();
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const handleLogin = () => {
-    // Mocking OAuth login
-    const mockUser: UserInfo = {
-      id: 'user_123',
-      name: 'Aditya Dash',
-      given_name: 'Aditya',
-      email: 'aditya@example.com',
-      picture: 'https://picsum.photos/100/100?random=10'
-    };
-    setUser(mockUser);
-    setIsAuthenticated(true);
-    localStorage.setItem('vekkam_user', JSON.stringify(mockUser));
-    
-    // Check for existing data
-    const savedData = localStorage.getItem('vekkam_data');
-    if (!savedData) {
-      const initialData: UserData = {
-        sessions: [],
-        user_tier: 'free',
-        total_analyses: 0,
-        last_analysis_date: null,
-        daily_analyses_count: 0
-      };
-      setUserData(initialData);
-      localStorage.setItem('vekkam_data', JSON.stringify(initialData));
-    } else {
-      setUserData(JSON.parse(savedData));
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed:", error);
+      alert("Authentication failed. Please check your browser permissions.");
     }
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setUser(null);
-    localStorage.removeItem('vekkam_user');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setAllChunks([]);
+      setActiveSessionNotes(undefined);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
-  const handleSaveSession = (notes: NoteBlock[]) => {
+  const handleSaveSession = async (notes: NoteBlock[]) => {
+    if (!user) return;
+
     const newSession: Session = {
       id: `session_${Date.now()}`,
       timestamp: new Date().toLocaleString(),
@@ -75,14 +107,11 @@ const App: React.FC = () => {
       notes
     };
 
-    setUserData(prev => {
-      const updated = {
-        ...prev,
-        sessions: [newSession, ...prev.sessions],
-        total_analyses: prev.total_analyses + 1
-      };
-      localStorage.setItem('vekkam_data', JSON.stringify(updated));
-      return updated;
+    const updatedSessions = [newSession, ...userData.sessions];
+    await updateFirestoreUser(user.id, {
+      sessions: updatedSessions,
+      total_analyses: userData.total_analyses + 1,
+      daily_analyses_count: userData.daily_analyses_count + 1
     });
   };
 
@@ -94,69 +123,91 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSessionDelete = (id: string) => {
-    setUserData(prev => {
-      const updated = {
-        ...prev,
-        sessions: prev.sessions.filter(s => s.id !== id)
-      };
-      localStorage.setItem('vekkam_data', JSON.stringify(updated));
-      return updated;
-    });
+  const handleSessionDelete = async (id: string) => {
+    if (!user) return;
+    const updatedSessions = userData.sessions.filter(s => s.id !== id);
+    await updateFirestoreUser(user.id, { sessions: updatedSessions });
   };
 
-  if (!isAuthenticated || !user) {
+  const handleUpgradeSuccess = async (tier: 'paid') => {
+    if (!user) return;
+    await updateFirestoreUser(user.id, { user_tier: tier });
+    setShowCheckout(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="animate-spin text-blue-600" size={48} />
+        <p className="text-gray-500 font-medium">Initializing Vekkam...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
     return <LandingPage onLogin={handleLogin} onViewPolicies={() => alert('Policies view requested')} />;
   }
 
   return (
-    <Layout 
-      user={user} 
-      userData={userData} 
-      onLogout={handleLogout} 
-      onToolSelect={setActiveTool} 
-      activeTool={activeTool}
-      onSessionSelect={handleSessionSelect}
-      onSessionDelete={handleSessionDelete}
-    >
-      <div className="h-full">
-        {activeTool === 'notes' && (
-          <NoteEngine 
-            allChunks={allChunks} 
-            setAllChunks={setAllChunks} 
-            onSaveSession={handleSaveSession}
-            savedNotes={activeSessionNotes}
-          />
-        )}
-        {activeTool === 'ta' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-4">
-              <MessageSquare size={48} className="mx-auto text-blue-600 mb-6" />
-              <h2 className="text-3xl font-bold">Personal TA</h2>
-              <p className="text-gray-500 max-w-sm">This module is coming soon in the React migration. It will allow you to chat across all your saved sessions.</p>
+    <>
+      <Layout 
+        user={user} 
+        userData={userData} 
+        onLogout={handleLogout} 
+        onToolSelect={setActiveTool} 
+        activeTool={activeTool}
+        onSessionSelect={handleSessionSelect}
+        onSessionDelete={handleSessionDelete}
+        onUpgradeClick={() => setShowCheckout(true)}
+      >
+        <div className="h-full">
+          {activeTool === 'notes' && (
+            <NoteEngine 
+              allChunks={allChunks} 
+              userData={userData}
+              setAllChunks={setAllChunks} 
+              onSaveSession={handleSaveSession}
+              onUpgradeRequest={() => setShowCheckout(true)}
+              savedNotes={activeSessionNotes}
+            />
+          )}
+          {activeTool === 'ta' && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <MessageSquare size={48} className="mx-auto text-blue-600 mb-6" />
+                <h2 className="text-3xl font-bold">Personal TA</h2>
+                <p className="text-gray-500 max-w-sm">Chat across all your saved sessions and get instant clarity on complex topics using your own study context.</p>
+              </div>
             </div>
-          </div>
-        )}
-        {activeTool === 'mock' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-4">
-              <FileText size={48} className="mx-auto text-blue-600 mb-6" />
-              <h2 className="text-3xl font-bold">Mock Test Generator</h2>
-              <p className="text-gray-500 max-w-sm">This module is coming soon. Test your knowledge across MCQ, VSA, SA, and LA formats.</p>
+          )}
+          {activeTool === 'mock' && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <FileText size={48} className="mx-auto text-blue-600 mb-6" />
+                <h2 className="text-3xl font-bold">Mock Test Generator</h2>
+                <p className="text-gray-500 max-w-sm">Test your knowledge across MCQ, VSA, SA, and LA formats to identify your weak points before the real exam.</p>
+              </div>
             </div>
-          </div>
-        )}
-        {activeTool === 'mastery' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-4">
-              <Zap size={48} className="mx-auto text-blue-600 mb-6" />
-              <h2 className="text-3xl font-bold">Mastery Engine</h2>
-              <p className="text-gray-500 max-w-sm">Visualize your syllabus as a skill tree and master concepts through targeted boss battles.</p>
+          )}
+          {activeTool === 'mastery' && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <Zap size={48} className="mx-auto text-blue-600 mb-6" />
+                <h2 className="text-3xl font-bold">Mastery Engine</h2>
+                <p className="text-gray-500 max-w-sm">Visualize your syllabus as a skill tree and master concepts through targeted boss battles.</p>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    </Layout>
+          )}
+        </div>
+      </Layout>
+
+      {showCheckout && (
+        <CheckoutModal 
+          onClose={() => setShowCheckout(false)} 
+          onSuccess={handleUpgradeSuccess} 
+        />
+      )}
+    </>
   );
 };
 
