@@ -1,6 +1,12 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, Auth } from "firebase/auth";
+import { 
+  getAuth, 
+  Auth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  updateProfile
+} from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, Firestore } from "firebase/firestore";
 import { UserData } from "../types";
 
@@ -19,7 +25,9 @@ const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) 
 
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
+
+// Auth helper exports
+export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
 
 /**
  * Ensures a user document exists in Firestore and returns the data.

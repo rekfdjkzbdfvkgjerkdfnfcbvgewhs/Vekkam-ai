@@ -4,15 +4,16 @@ import LandingPage from './components/LandingPage';
 import Layout from './components/Layout';
 import NoteEngine from './components/NoteEngine';
 import CheckoutModal from './components/CheckoutModal';
+import AuthOverlay from './components/AuthOverlay';
 import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
 import { MessageSquare, FileText, Zap, Loader2 } from 'lucide-react';
-import { auth, googleProvider, db, updateFirestoreUser, ensureUserDoc } from './services/firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { auth, db, updateFirestoreUser, ensureUserDoc } from './services/firebase';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [loggingIn, setLoggingIn] = useState(false);
+  const [authMode, setAuthMode] = useState<'none' | 'login' | 'signup'>('none');
   const [user, setUser] = useState<UserInfo | null>(null);
   const [userData, setUserData] = useState<UserData>({
     sessions: [],
@@ -35,7 +36,7 @@ const App: React.FC = () => {
           name: firebaseUser.displayName || 'Student',
           given_name: firebaseUser.displayName?.split(' ')[0] || 'Student',
           email: firebaseUser.email || '',
-          picture: firebaseUser.photoURL || `https://picsum.photos/100/100?seed=${firebaseUser.uid}`
+          picture: `https://picsum.photos/100/100?seed=${firebaseUser.uid}`
         };
         setUser(userInfo);
 
@@ -83,23 +84,6 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
-
-  const handleLogin = async () => {
-    if (loggingIn) return;
-    setLoggingIn(true);
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        alert("This domain is not authorized for login. Please add your Vercel URL to the Firebase Console Authorized Domains list.");
-      } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
-        alert(`Authentication failed: ${error.message}`);
-      }
-    } finally {
-      setLoggingIn(false);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -159,7 +143,20 @@ const App: React.FC = () => {
   }
 
   if (!user) {
-    return <LandingPage onLogin={handleLogin} onViewPolicies={() => alert('Policies view requested')} />;
+    return (
+      <>
+        <LandingPage 
+          onLogin={() => setAuthMode('login')} 
+          onViewPolicies={() => alert('Policies view requested')} 
+        />
+        {authMode !== 'none' && (
+          <AuthOverlay 
+            initialMode={authMode === 'login' ? 'login' : 'signup'} 
+            onClose={() => setAuthMode('none')} 
+          />
+        )}
+      </>
+    );
   }
 
   return (
