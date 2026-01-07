@@ -18,6 +18,7 @@ import {
 } from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { Analytics } from "@vercel/analytics/next";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -169,6 +170,7 @@ const App: React.FC = () => {
   if (!user) {
     return (
       <>
+        <Analytics />
         <LandingPage 
           onLogin={() => setAuthMode('login')} 
           onViewPolicies={() => alert('Policies view requested')} 
@@ -188,6 +190,7 @@ const App: React.FC = () => {
 
   return (
     <>
+      <Analytics />
       <Layout 
         user={user} 
         userData={layoutUserData} 
@@ -241,6 +244,7 @@ const App: React.FC = () => {
 
       {showCheckout && (
         <CheckoutModal 
+          user={user}
           onClose={() => setShowCheckout(false)} 
           onSuccess={handleUpgradeSuccess} 
         />

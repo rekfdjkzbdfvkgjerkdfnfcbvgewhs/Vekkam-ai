@@ -1,29 +1,72 @@
 
 import React, { useState } from 'react';
 import { X, Check, Crown, Zap, Shield, Loader2 } from 'lucide-react';
+import { UserInfo } from '../types';
 
 interface CheckoutModalProps {
+  user: UserInfo;
   onClose: () => void;
   onSuccess: (tier: 'paid') => void;
 }
 
-const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess }) => {
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+const CheckoutModal: React.FC<CheckoutModalProps> = ({ user, onClose, onSuccess }) => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const handlePayment = () => {
+    if (!window.Razorpay) {
+      alert("Razorpay SDK failed to load. Please check your internet connection.");
+      return;
+    }
+
     setIsProcessing(true);
-    
-    // Simulate Razorpay Checkout opening
-    setTimeout(() => {
-      // Simulate successful payment confirmation
+    setPaymentStatus('idle');
+
+    const options = {
+      key: "rzp_live_S13GFNFWq7fhgm",
+      amount: 10000, // Amount in paise (100 INR)
+      currency: "INR",
+      name: "Vekkam Engine",
+      description: "Unlocked Tier Subscription",
+      image: "https://vekkam.ai/favicon.ico", // Placeholder image
+      handler: function (response: any) {
+        setIsProcessing(false);
+        if (response.razorpay_payment_id) {
+          setPaymentStatus('success');
+          setTimeout(() => {
+            onSuccess('paid');
+          }, 2000);
+        } else {
+          setPaymentStatus('error');
+        }
+      },
+      prefill: {
+        name: user.name,
+        email: user.email,
+      },
+      theme: {
+        color: "#2563eb",
+      },
+      modal: {
+        ondismiss: function() {
+          setIsProcessing(false);
+        }
+      }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', function (response: any) {
       setIsProcessing(false);
-      setPaymentStatus('success');
-      
-      setTimeout(() => {
-        onSuccess('paid');
-      }, 2000);
-    }, 2500);
+      setPaymentStatus('error');
+      console.error(response.error.description);
+    });
+    rzp.open();
   };
 
   if (paymentStatus === 'success') {
@@ -113,6 +156,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess }) => 
             </div>
           </div>
 
+          {paymentStatus === 'error' && (
+            <p className="text-red-500 text-sm font-bold text-center mb-4">Payment failed. Please try again.</p>
+          )}
+
           <button 
             onClick={handlePayment}
             disabled={isProcessing}
@@ -121,7 +168,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess }) => 
             {isProcessing ? (
               <>
                 <Loader2 className="animate-spin" />
-                Processing Payment...
+                Processing...
               </>
             ) : (
               'Upgrade Now via Razorpay'
