@@ -22,12 +22,13 @@ export interface Session {
   notes: NoteBlock[];
 }
 
+// Root user metadata
 export interface UserData {
-  sessions: Session[];
   user_tier: UserTier;
   total_analyses: number;
   last_analysis_date: string | null;
   daily_analyses_count: number;
+  // Note: sessions are now in a subcollection
 }
 
 export interface Chunk {

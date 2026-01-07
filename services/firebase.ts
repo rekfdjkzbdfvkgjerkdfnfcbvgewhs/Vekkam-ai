@@ -7,8 +7,20 @@ import {
   createUserWithEmailAndPassword,
   updateProfile
 } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, Firestore } from "firebase/firestore";
-import { UserData } from "../types";
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  updateDoc,
+  collection, 
+  getDocs, 
+  deleteDoc,
+  query,
+  orderBy,
+  Firestore 
+} from "firebase/firestore";
+import { UserData, Session } from "../types";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAEZpRngu0QxJ1e1oc5X0d-w2pN78Nu4aU",
@@ -20,13 +32,11 @@ const firebaseConfig = {
   measurementId: "G-0ELJ27ERCT"
 };
 
-// Initialize Firebase only once
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
 
-// Auth helper exports
 export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
 
 /**
@@ -45,9 +55,41 @@ export const ensureUserDoc = async (uid: string, initialData: UserData): Promise
 };
 
 /**
- * Atomic update for user data in Firestore.
+ * Updates root user metadata (Tier, Credits, etc.)
  */
 export const updateFirestoreUser = async (uid: string, data: Partial<UserData>) => {
   const userRef = doc(db, "users", uid);
   await setDoc(userRef, data, { merge: true });
+};
+
+/**
+ * Saves a study session to the user's sessions subcollection.
+ * Using a separate document per session ensures we never hit the 1MB per-doc limit.
+ */
+export const saveFirestoreSession = async (uid: string, session: Session) => {
+  const sessionRef = doc(db, "users", uid, "sessions", session.id);
+  await setDoc(sessionRef, session);
+};
+
+/**
+ * Deletes a specific session.
+ */
+export const deleteFirestoreSession = async (uid: string, sessionId: string) => {
+  const sessionRef = doc(db, "users", uid, "sessions", sessionId);
+  await deleteDoc(sessionRef);
+};
+
+/**
+ * Fetches all sessions for a user, ordered by timestamp.
+ */
+export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
+  const sessionsRef = collection(db, "users", uid, "sessions");
+  const q = query(sessionsRef, orderBy("timestamp", "desc"));
+  const querySnapshot = await getDocs(q);
+  
+  const sessions: Session[] = [];
+  querySnapshot.forEach((doc) => {
+    sessions.push(doc.data() as Session);
+  });
+  return sessions;
 };

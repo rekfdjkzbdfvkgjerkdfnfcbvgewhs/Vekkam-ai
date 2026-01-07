@@ -7,7 +7,15 @@ import CheckoutModal from './components/CheckoutModal';
 import AuthOverlay from './components/AuthOverlay';
 import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
 import { MessageSquare, FileText, Zap, Loader2 } from 'lucide-react';
-import { auth, db, updateFirestoreUser, ensureUserDoc } from './services/firebase';
+import { 
+  auth, 
+  db, 
+  updateFirestoreUser, 
+  ensureUserDoc, 
+  saveFirestoreSession, 
+  getFirestoreSessions,
+  deleteFirestoreSession 
+} from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 
@@ -16,12 +24,12 @@ const App: React.FC = () => {
   const [authMode, setAuthMode] = useState<'none' | 'login' | 'signup'>('none');
   const [user, setUser] = useState<UserInfo | null>(null);
   const [userData, setUserData] = useState<UserData>({
-    sessions: [],
     user_tier: 'free',
     total_analyses: 0,
     last_analysis_date: null,
     daily_analyses_count: 0
   });
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
@@ -40,10 +48,8 @@ const App: React.FC = () => {
         };
         setUser(userInfo);
 
-        // Ensure user data exists in Firestore
         const today = new Date().toDateString();
         const initialData: UserData = {
-          sessions: [],
           user_tier: 'free',
           total_analyses: 0,
           last_analysis_date: today,
@@ -51,14 +57,17 @@ const App: React.FC = () => {
         };
         
         try {
+          // Initialize/Get Profile
           await ensureUserDoc(firebaseUser.uid, initialData);
 
-          // Set up real-time Firestore listener for this user
+          // Get Initial Sessions List
+          const userSessions = await getFirestoreSessions(firebaseUser.uid);
+          setSessions(userSessions);
+
+          // Real-time Metadata Sync (Tier, Credits)
           const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data() as UserData;
-              
-              // Check for daily reset locally
               if (data.last_analysis_date !== today) {
                 updateFirestoreUser(firebaseUser.uid, {
                   daily_analyses_count: 0,
@@ -78,6 +87,7 @@ const App: React.FC = () => {
         }
       } else {
         setUser(null);
+        setSessions([]);
         setLoading(false);
       }
     });
@@ -89,6 +99,7 @@ const App: React.FC = () => {
     try {
       await signOut(auth);
       setAllChunks([]);
+      setSessions([]);
       setActiveSessionNotes(undefined);
     } catch (error) {
       console.error("Logout failed:", error);
@@ -105,16 +116,25 @@ const App: React.FC = () => {
       notes
     };
 
-    const updatedSessions = [newSession, ...userData.sessions];
-    await updateFirestoreUser(user.id, {
-      sessions: updatedSessions,
-      total_analyses: userData.total_analyses + 1,
-      daily_analyses_count: userData.daily_analyses_count + 1
-    });
+    try {
+      // 1. Save to Subcollection
+      await saveFirestoreSession(user.id, newSession);
+      
+      // 2. Update Credits in Root Doc
+      await updateFirestoreUser(user.id, {
+        total_analyses: userData.total_analyses + 1,
+        daily_analyses_count: userData.daily_analyses_count + 1
+      });
+
+      // 3. Update local state
+      setSessions(prev => [newSession, ...prev]);
+    } catch (err) {
+      console.error("Failed to save session:", err);
+    }
   };
 
   const handleSessionSelect = (id: string) => {
-    const session = userData.sessions.find(s => s.id === id);
+    const session = sessions.find(s => s.id === id);
     if (session) {
       setActiveSessionNotes(session.notes);
       setActiveTool('notes');
@@ -123,8 +143,12 @@ const App: React.FC = () => {
 
   const handleSessionDelete = async (id: string) => {
     if (!user) return;
-    const updatedSessions = userData.sessions.filter(s => s.id !== id);
-    await updateFirestoreUser(user.id, { sessions: updatedSessions });
+    try {
+      await deleteFirestoreSession(user.id, id);
+      setSessions(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+    }
   };
 
   const handleUpgradeSuccess = async (tier: 'paid') => {
@@ -137,7 +161,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-600" size={48} />
-        <p className="text-gray-500 font-medium">Initializing Vekkam...</p>
+        <p className="text-gray-500 font-medium">Synchronizing Workspace...</p>
       </div>
     );
   }
@@ -159,11 +183,14 @@ const App: React.FC = () => {
     );
   }
 
+  // Inject sessions into Layout props via a mapped structure or by passing directly
+  const layoutUserData = { ...userData, sessions };
+
   return (
     <>
       <Layout 
         user={user} 
-        userData={userData} 
+        userData={layoutUserData} 
         onLogout={handleLogout} 
         onToolSelect={setActiveTool} 
         activeTool={activeTool}
