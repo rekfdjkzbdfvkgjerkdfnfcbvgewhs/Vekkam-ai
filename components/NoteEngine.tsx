@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, Crown, AlertCircle } from 'lucide-react';
+import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, Crown, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Chunk, NoteBlock, UserData } from '../types';
-import { generateLocalOutline, synthesizeLocalNote, localAnswerer } from '../services/ai_engine';
+import { generateLocalOutline, synthesizeLocalNote, localAnswerer, extractTextFromFile, chunkText } from '../services/ai_engine';
 import ReactMarkdown from 'react-markdown';
 
 interface NoteEngineProps {
@@ -24,6 +24,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
 }) => {
   const [step, setStep] = useState<'upload' | 'workspace' | 'synthesizing' | 'results'>(savedNotes ? 'results' : 'upload');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processStatus, setProcessStatus] = useState<string>('');
   const [outline, setOutline] = useState<{ topic: string; relevant_chunks: string[] }[]>([]);
   const [editableOutlineText, setEditableOutlineText] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -48,29 +49,48 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
 
     setIsProcessing(true);
     const newChunks: Chunk[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const mockText = `This is extracted content from ${file.name}. It contains essential study material about the core concepts discussed in the syllabus. It covers foundational topics and more advanced details required for exams.`;
-      const chunkId = `file_${Date.now()}_${i}`;
-      newChunks.push({ chunk_id: chunkId, text: mockText });
-    }
     
-    setAllChunks(prev => [...prev, ...newChunks]);
-    setIsProcessing(false);
-    setStep('workspace');
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setProcessStatus(`Processing ${file.name}...`);
+        
+        // Proper text extraction
+        const extractedText = await extractTextFromFile(file);
+        const fileChunks = chunkText(extractedText, `file_${Date.now()}_${i}`);
+        newChunks.push(...fileChunks);
+      }
+      
+      setAllChunks(prev => [...prev, ...newChunks]);
+      setStep('workspace');
+    } catch (err) {
+      console.error(err);
+      alert("Some files could not be processed. Please check the file format and try again.");
+    } finally {
+      setIsProcessing(false);
+      setProcessStatus('');
+    }
   };
 
   const handleGenerateOutline = async () => {
     if (allChunks.length === 0) return;
     setIsProcessing(true);
+    setProcessStatus('Analyzing content for logical flow...');
     try {
       const result = await generateLocalOutline(allChunks);
-      setOutline(result.outline);
-      setEditableOutlineText(result.outline.map((o: any) => o.topic).join('\n'));
+      if (result.outline && result.outline.length > 0) {
+        setOutline(result.outline);
+        setEditableOutlineText(result.outline.map((o: any) => o.topic).join('\n'));
+      } else {
+        // Simple heuristic fallback if AI fails to return structured JSON
+        const topics = ["Overview", "Key Concepts", "Deep Dive", "Application", "Conclusion"];
+        setEditableOutlineText(topics.join('\n'));
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setIsProcessing(false);
+      setProcessStatus('');
     }
   };
 
@@ -88,7 +108,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         .join('\n\n');
 
       try {
-        const content = await synthesizeLocalNote(topic, relevantText || "No context found", instructions);
+        const content = await synthesizeLocalNote(topic, relevantText || allChunks.slice(0, 3).map(c => c.text).join('\n'), instructions);
         synthesized.push({ topic, content: content || "", source_chunks: relevantChunkIds });
       } catch (err) {
         synthesized.push({ topic, content: "Failed to synthesize content for this topic.", source_chunks: [] });
@@ -150,22 +170,36 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           <p className="text-gray-500">Upload your study material (PDF, Image, or Audio) to generate high-impact revision notes.</p>
           
           <div 
-            onClick={() => hasCredits && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-3xl p-12 bg-white transition-all group ${hasCredits ? 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer' : 'border-gray-100 opacity-50 cursor-not-allowed'}`}
+            onClick={() => !isProcessing && hasCredits && fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-3xl p-12 bg-white transition-all group ${hasCredits && !isProcessing ? 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer' : 'border-gray-100 opacity-50 cursor-not-allowed'}`}
           >
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple disabled={!hasCredits} />
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              className="hidden" 
+              multiple 
+              accept=".pdf,image/*,audio/*"
+              disabled={!hasCredits || isProcessing} 
+            />
             <div className="flex flex-col items-center gap-4">
-              <div className={`p-4 rounded-2xl transition-colors ${hasCredits ? 'bg-gray-100 group-hover:bg-blue-100' : 'bg-gray-50'}`}>
-                <File className={`text-gray-400 ${hasCredits ? 'group-hover:text-blue-600' : ''}`} size={32} />
+              <div className={`p-4 rounded-2xl transition-colors ${hasCredits && !isProcessing ? 'bg-gray-100 group-hover:bg-blue-100' : 'bg-gray-50'}`}>
+                <File className={`text-gray-400 ${hasCredits && !isProcessing ? 'group-hover:text-blue-600' : ''}`} size={32} />
               </div>
-              <div className="text-sm font-semibold text-gray-500">Click to select files from your device</div>
-              <div className="text-xs text-gray-400">Remaining Credits: {remainingCredits}</div>
+              <div className="text-sm font-semibold text-gray-500">
+                {isProcessing ? 'Scanning files...' : 'Click to select files from your device'}
+              </div>
+              <div className="text-xs text-gray-400">PDF, JPG, PNG, MP3, WAV supported</div>
             </div>
           </div>
           
           {isProcessing && (
-            <div className="flex items-center justify-center gap-2 text-blue-600 font-bold">
-              <Loader2 className="animate-spin" /> Processing your material...
+            <div className="bg-blue-50 p-6 rounded-2xl flex items-center gap-4 text-blue-700 animate-in fade-in slide-in-from-top-4">
+              <Loader2 className="animate-spin" />
+              <div className="text-left">
+                <p className="font-bold text-sm">Deep Intelligence at work</p>
+                <p className="text-xs opacity-75">{processStatus}</p>
+              </div>
             </div>
           )}
         </div>
@@ -178,13 +212,17 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
         <header className="flex justify-between items-end">
           <div>
+            <div className="flex items-center gap-2 text-emerald-600 mb-1">
+              <CheckCircle2 size={16} />
+              <span className="text-xs font-bold uppercase tracking-wider">Content Extracted Successfully</span>
+            </div>
             <h2 className="text-3xl font-extrabold text-gray-900">Vekkam Workspace</h2>
-            <p className="text-gray-500">Analyze your content and prepare for synthesis.</p>
+            <p className="text-gray-500">Review your content and prepare for synthesis.</p>
           </div>
           <button 
             onClick={handleGenerateOutline}
             disabled={isProcessing}
-            className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all disabled:opacity-50"
+            className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-200"
           >
             {isProcessing ? <Loader2 className="animate-spin" /> : <Wand2 size={20} />}
             Generate Outline
@@ -235,8 +273,8 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
             <Wand2 size={24} />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-gray-900">Local Synthesis In Progress...</h2>
-        <p className="text-gray-500 max-w-sm">We're weaving your study material into a cohesive learning experience using our proprietary local engine.</p>
+        <h2 className="text-3xl font-extrabold text-gray-900">Multimodal Synthesis In Progress...</h2>
+        <p className="text-gray-500 max-w-sm">We're weaving your study material into a cohesive learning experience using our multimodal engine.</p>
       </div>
     );
   }
