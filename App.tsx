@@ -12,6 +12,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [userData, setUserData] = useState<UserData>({
     sessions: [],
@@ -48,27 +49,32 @@ const App: React.FC = () => {
           daily_analyses_count: 0
         };
         
-        await ensureUserDoc(firebaseUser.uid, initialData);
+        try {
+          await ensureUserDoc(firebaseUser.uid, initialData);
 
-        // Set up real-time Firestore listener for this user
-        const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as UserData;
-            
-            // Check for daily reset locally
-            if (data.last_analysis_date !== today) {
-              updateFirestoreUser(firebaseUser.uid, {
-                daily_analyses_count: 0,
-                last_analysis_date: today
-              });
-            } else {
-              setUserData(data);
+          // Set up real-time Firestore listener for this user
+          const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as UserData;
+              
+              // Check for daily reset locally
+              if (data.last_analysis_date !== today) {
+                updateFirestoreUser(firebaseUser.uid, {
+                  daily_analyses_count: 0,
+                  last_analysis_date: today
+                });
+              } else {
+                setUserData(data);
+              }
             }
-          }
-        });
+          });
 
-        setLoading(false);
-        return () => unsubDoc();
+          setLoading(false);
+          return () => unsubDoc();
+        } catch (err) {
+          console.error("Error ensuring user doc:", err);
+          setLoading(false);
+        }
       } else {
         setUser(null);
         setLoading(false);
@@ -79,11 +85,19 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = async () => {
+    if (loggingIn) return;
+    setLoggingIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed:", error);
-      alert("Authentication failed. Please check your browser permissions.");
+      if (error.code === 'auth/unauthorized-domain') {
+        alert("This domain is not authorized for login. Please add your Vercel URL to the Firebase Console Authorized Domains list.");
+      } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+        alert(`Authentication failed: ${error.message}`);
+      }
+    } finally {
+      setLoggingIn(false);
     }
   };
 

@@ -1,7 +1,7 @@
 
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, Auth } from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, Firestore } from "firebase/firestore";
 import { UserData } from "../types";
 
 const firebaseConfig = {
@@ -15,10 +15,10 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase only once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const auth: Auth = getAuth(app);
+export const db: Firestore = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 /**
