@@ -1,8 +1,4 @@
-
-import { GoogleGenAI, Part } from "@google/genai";
 import { Chunk } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.apiKey || process.env.API_KEY || '' });
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
@@ -28,64 +24,72 @@ async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYS
   }
 
   const data = await response.json();
-  // Handling common vLLM/custom response formats
   return data.text || data.response || data.generated_text || "";
 }
 
 /**
- * Utility to convert browser File to Gemini Part
- */
-export const fileToGenerativePart = async (file: File): Promise<Part> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64Data = (reader.result as string).split(',')[1];
-      resolve({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
-      });
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
-
-/**
- * Extracts text content from various file types using Gemini (Required for multimodal support)
+ * Extracts text content from various file types.
+ * Fast path for .txt files (local processing).
+ * Proxy path for PDF, images, and audio.
  */
 export const extractTextFromFile = async (file: File): Promise<string> => {
-  const part = await fileToGenerativePart(file);
-  const isAudio = file.type.startsWith('audio/');
-  
-  const model = isAudio 
-    ? 'gemini-2.5-flash-native-audio-preview-12-2025' 
-    : 'gemini-3-flash-preview';
-
-  const prompt = isAudio 
-    ? "Provide a verbatim transcription. No summaries. Pure text."
-    : "Extract all text. Maintain hierarchy. Output only the content.";
-
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: [{ parts: [part, { text: prompt }] }],
-      config: {
-        systemInstruction: RUTHLESS_SYSTEM_PROMPT
-      }
+  // Fast Path: Plain Text Files
+  if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string || "");
+      reader.onerror = () => reject(new Error("Failed to read text file."));
+      reader.readAsText(file);
     });
-    return response.text || "";
-  } catch (error) {
-    console.error(`Extraction failed:`, error);
-    throw new Error(`Failed to process exam material.`);
   }
+
+  // Multimodal Path: Gemini Proxy
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const result = reader.result as string;
+        if (!result) throw new Error("File reading resulted in empty data.");
+        
+        const base64Data = result.split(',')[1];
+        const isAudio = file.type.startsWith('audio/');
+        
+        const prompt = isAudio 
+          ? "Provide a verbatim transcription. No summaries. Pure text. Output only the content."
+          : "Extract all text from this material. Maintain structure and hierarchy. Output only the content.";
+
+        const response = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base64Data,
+            mimeType: file.type || 'application/octet-stream', // Fallback
+            prompt
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || "Extraction failed on server.");
+        }
+
+        const data = await response.json();
+        resolve(data.text || "");
+      } catch (err) {
+        console.error("Extraction Proxy Error:", err);
+        reject(err instanceof Error ? err : new Error("Unknown extraction error"));
+      }
+    };
+    reader.onerror = () => reject(new Error("File reading failed locally."));
+    reader.readAsDataURL(file);
+  });
 };
 
 /**
  * Chunks large text into smaller segments
  */
 export const chunkText = (text: string, sourceId: string, size: number = 500, overlap: number = 50): Chunk[] => {
+  if (!text) return [];
   const words = text.split(/\s+/);
   const chunks: Chunk[] = [];
   
@@ -118,7 +122,6 @@ export const generateLocalOutline = async (chunks: Chunk[]) => {
 
   try {
     const text = await callQwen(prompt);
-    // Cleanup potential markdown wrappers from LLM output
     const cleanJson = text.replace(/```json|```/g, '').trim();
     return JSON.parse(cleanJson || '{"outline": []}');
   } catch (error) {
