@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Part } from "@google/genai";
-import { Chunk, NoteBlock } from "../types";
+import { Chunk } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.apiKey || process.env.API_KEY || '' });
 
@@ -10,6 +10,27 @@ Do not be overly conversational. Be decisive.
 Focus only on high-yield exam-relevant material. 
 If a concept is fluff, cut it. If it is complex, break it into battle units.
 Always prioritize questions as the primary teaching tool.`;
+
+/**
+ * Utility to call the Qwen backend via Vercel proxy
+ */
+async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYSTEM_PROMPT): Promise<string> {
+  const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
+  
+  const response = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: fullPrompt })
+  });
+
+  if (!response.ok) {
+    throw new Error('Clearing failed at the engine level.');
+  }
+
+  const data = await response.json();
+  // Handling common vLLM/custom response formats
+  return data.text || data.response || data.generated_text || "";
+}
 
 /**
  * Utility to convert browser File to Gemini Part
@@ -32,7 +53,7 @@ export const fileToGenerativePart = async (file: File): Promise<Part> => {
 };
 
 /**
- * Extracts text content from various file types using Gemini
+ * Extracts text content from various file types using Gemini (Required for multimodal support)
  */
 export const extractTextFromFile = async (file: File): Promise<string> => {
   const part = await fileToGenerativePart(file);
@@ -90,24 +111,18 @@ export const generateLocalOutline = async (chunks: Chunk[]) => {
   Cut the fluff. Prioritize high-yield topics.
   For each unit, list relevant 'chunk_id' values.
   
+  IMPORTANT: Return ONLY a valid JSON object. 
+  Format: {"outline": [{"topic": "Name", "relevant_chunks": ["id1"]}]}
+
   Chunks: ${JSON.stringify(chunks.map(c => ({ id: c.chunk_id, snippet: c.text.slice(0, 100) })))}`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        systemInstruction: RUTHLESS_SYSTEM_PROMPT
-      }
-    });
-    
-    try {
-      return JSON.parse(response.text || '{"outline": []}');
-    } catch {
-      return { outline: [] };
-    }
+    const text = await callQwen(prompt);
+    // Cleanup potential markdown wrappers from LLM output
+    const cleanJson = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleanJson || '{"outline": []}');
   } catch (error) {
+    console.error("Outline generation error:", error);
     return { outline: [] };
   }
 };
@@ -123,18 +138,7 @@ export const synthesizeLocalNote = async (topic: string, text: string, instructi
     ${text}
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: RUTHLESS_SYSTEM_PROMPT
-      }
-    });
-    return response.text || "";
-  } catch (error) {
-    return `Clearance failed for ${topic}.`;
-  }
+  return callQwen(prompt);
 };
 
 export const localAnswerer = async (query: string, context: string): Promise<string> => {
@@ -148,16 +152,5 @@ export const localAnswerer = async (query: string, context: string): Promise<str
     Query: ${query}
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: RUTHLESS_SYSTEM_PROMPT
-      }
-    });
-    return response.text || "I'm busy strategizing. Try again.";
-  } catch (error) {
-    return "Engine overload. Strategy TA is down.";
-  }
+  return callQwen(prompt);
 };

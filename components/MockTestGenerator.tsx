@@ -1,10 +1,7 @@
 
 import React, { useState } from 'react';
 import { FileText, ClipboardList, Send, Loader2, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 const MockTestGenerator: React.FC = () => {
   const [syllabus, setSyllabus] = useState('');
@@ -17,29 +14,34 @@ const MockTestGenerator: React.FC = () => {
     setLoading(true);
 
     try {
-      const prompt = `Generate a high-quality study test based on this syllabus: "${syllabus}". 
+      const prompt = `You are Vekkam. Generate a high-quality study test based on this syllabus: "${syllabus}". 
       Include 5 MCQs and 2 Short Answer questions. 
-      Format the response as JSON with the following schema:
+      Return ONLY a JSON object.
+      Format:
       {
         "mcqs": [ { "question": "", "options": ["A", "B", "C", "D"], "answer": "A" } ],
         "shortAnswers": [ { "question": "", "rubric": "" } ]
       }`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          // Schema is not strictly enforced in current SDK, but we pass it as hint
-        }
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
       });
 
-      const data = JSON.parse(response.text || '{}');
+      if (!response.ok) throw new Error("Generation failed");
+
+      const rawData = await response.json();
+      const text = rawData.text || rawData.response || rawData.generated_text || "{}";
+      
+      const cleanJson = text.replace(/```json|```/g, '').trim();
+      const data = JSON.parse(cleanJson);
+      
       setTest(data);
       setStep('results');
     } catch (err) {
       console.error(err);
-      alert("Failed to generate test. Please try again with a more detailed syllabus.");
+      alert("Failed to generate test. Ensure your syllabus is descriptive.");
     } finally {
       setLoading(false);
     }
@@ -49,7 +51,7 @@ const MockTestGenerator: React.FC = () => {
     <div className="h-full bg-white dark:bg-gray-950 flex flex-col transition-colors">
       <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Mock Test Generator</h2>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">The Final Gauntlet</h2>
           <p className="text-gray-500 dark:text-gray-400">Transform your syllabus into a gauntlet of practice questions.</p>
         </div>
         <ClipboardList size={32} className="text-blue-600 dark:text-blue-400" />
@@ -64,7 +66,7 @@ const MockTestGenerator: React.FC = () => {
                </div>
                <div>
                  <h3 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 mb-2">Paste your Syllabus</h3>
-                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">The more detail you provide, the better the AI can align the questions with your exam objectives.</p>
+                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">The more detail you provide, the sharper the questions.</p>
                </div>
             </div>
 
@@ -81,7 +83,7 @@ const MockTestGenerator: React.FC = () => {
               className="w-full py-5 bg-blue-600 text-white rounded-3xl font-extrabold text-xl shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
-              Generate Custom Practice Test
+              Generate Final Gauntlet
             </button>
           </div>
         ) : (
@@ -89,13 +91,13 @@ const MockTestGenerator: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 size={20} />
-                <span className="text-xs font-bold uppercase tracking-widest">Test Generated Successfully</span>
+                <span className="text-xs font-bold uppercase tracking-widest">Gauntlet Ready</span>
               </div>
               <button 
                 onClick={() => setStep('input')} 
                 className="text-blue-600 dark:text-blue-400 font-bold hover:underline transition-colors"
               >
-                New Test
+                Reset Gauntlet
               </button>
             </div>
 
