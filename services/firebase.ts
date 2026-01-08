@@ -21,10 +21,9 @@ import {
   arrayUnion,
   arrayRemove,
   serverTimestamp,
-  // Fix: Import missing updateDoc, where, and onSnapshot
-  updateDoc, 
-  where,
-  onSnapshot,
+  updateDoc, // Added missing import
+  where,     // Added missing import
+  onSnapshot, // Added missing import
   Firestore 
 } from "firebase/firestore";
 import { UserData, Session, Badge, StudyGroup, GroupMessage } from "../types";
@@ -91,7 +90,6 @@ export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
   return sessions;
 };
 
-// Fix: `updateDoc` was missing from imports
 export const saveUserBadge = async (uid: string, badge: Badge) => {
   const userRef = doc(db, "users", uid);
   await updateDoc(userRef, {
@@ -128,7 +126,6 @@ export const createStudyGroup = async (creatorId: string, creatorInfo: { id: str
 
   // Ensure unique access code
   while (codeExists) {
-    // Fix: `where` was missing from imports
     const q = query(groupsRef, where("accessCode", "==", accessCode));
     const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
@@ -160,7 +157,6 @@ export const createStudyGroup = async (creatorId: string, creatorInfo: { id: str
 
 export const joinStudyGroup = async (uid: string, userInfo: { id: string, name: string, picture: string }, accessCode: string): Promise<StudyGroup> => {
   const groupsRef = collection(db, "study_groups");
-  // Fix: `where` was missing from imports
   const q = query(groupsRef, where("accessCode", "==", accessCode));
   const querySnapshot = await getDocs(q);
 
@@ -177,7 +173,6 @@ export const joinStudyGroup = async (uid: string, userInfo: { id: string, name: 
   }
 
   // Add user to group's members array
-  // Fix: `updateDoc` was missing from imports
   await updateDoc(groupDoc.ref, {
     members: arrayUnion(userInfo)
   });
@@ -202,7 +197,6 @@ export const leaveStudyGroup = async (uid: string, groupId: string) => {
   const memberToRemove = groupData.members.find(member => member.id === uid);
 
   if (memberToRemove) {
-    // Fix: `updateDoc` was missing from imports
     await updateDoc(groupRef, {
       members: arrayRemove(memberToRemove)
     });
@@ -237,7 +231,6 @@ export const sendGroupMessage = async (groupId: string, message: Omit<GroupMessa
   await addDoc(messagesRef, { ...message, timestamp: serverTimestamp() });
 };
 
-// Fix: `onSnapshot` was missing from imports
 export const getGroupMessagesStream = (groupId: string, callback: (messages: GroupMessage[]) => void) => {
   const messagesRef = collection(db, "study_groups", groupId, "messages");
   const q = query(messagesRef, orderBy("timestamp"));
