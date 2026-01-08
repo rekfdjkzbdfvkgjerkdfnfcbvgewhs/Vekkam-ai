@@ -6,7 +6,7 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      "https://qwen3-4b-f16-5fjw.onrender.com/generate",
+      "https://qwen-placeholder.onrender.com/generate",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   console.log("Triggering uptime ping for Render backend...");
 
   try {
-    const renderUrl = "https://qwen3-4b-f16-5fjw.onrender.com/generate";
+    const renderUrl = "https://qwen-placeholder.onrender.com/generate";
     
     // We send a dummy POST request to keep the /generate endpoint warm
     // Render free tier spins down after 15 mins, so this cron will run every 14 mins.
