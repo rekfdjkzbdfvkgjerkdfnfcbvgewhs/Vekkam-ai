@@ -1,4 +1,3 @@
-
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -6,7 +5,7 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      "https://qwen-placeholder.onrender.com/generate",
+      "https://inference-llm.onrender.com/generate",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

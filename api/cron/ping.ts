@@ -1,4 +1,3 @@
-
 export default async function handler(req, res) {
   // Only allow Vercel's Cron system to trigger this or manual dev pings
   // Vercel sends an authorization header for crons usually, but for simple uptime pings, we focus on the side effect.
@@ -6,7 +5,7 @@ export default async function handler(req, res) {
   console.log("Triggering uptime ping for Render backend...");
 
   try {
-    const renderUrl = "https://qwen-placeholder.onrender.com/generate";
+    const renderUrl = "https://inference-llm.onrender.com/generate";
     
     // We send a dummy POST request to keep the /generate endpoint warm
     // Render free tier spins down after 15 mins, so this cron will run every 14 mins.

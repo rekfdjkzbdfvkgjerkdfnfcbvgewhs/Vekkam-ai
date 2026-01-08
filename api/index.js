@@ -23,7 +23,7 @@ app.post('/api/generate', async (req, res) => {
 
   try {
     const r = await fetch(
-      "https://qwen-placeholder.onrender.com/generate",
+      "https://inference-llm.onrender.com/generate",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,7 +91,7 @@ app.post('/api/extract', async (req, res) => {
 app.all('/api/cron/ping', async (req, res) => {
   console.log("Triggering uptime ping for Render backend...");
   try {
-    const renderUrl = "https://qwen-placeholder.onrender.com/generate";
+    const renderUrl = "https://inference-llm.onrender.com/generate";
     const response = await fetch(renderUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
