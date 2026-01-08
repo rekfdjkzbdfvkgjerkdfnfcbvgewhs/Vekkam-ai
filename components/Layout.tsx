@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { UserInfo, UserData, Session } from '../types';
 import { 
   LogOut, 
-  BookOpen, 
+  Target, 
   MessageSquare, 
-  FileText, 
+  ShieldAlert, 
   Zap, 
   History, 
   ChevronRight,
@@ -48,14 +48,14 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   const tools = [
-    { id: 'notes', name: 'Note & Lesson Engine', icon: BookOpen },
-    { id: 'ta', name: 'Personal TA', icon: MessageSquare },
-    { id: 'mock', name: 'Mock Test Generator', icon: FileText },
-    { id: 'mastery', name: 'Mastery Engine', icon: Zap },
+    { id: 'notes', name: 'Clearance Engine', icon: Target },
+    { id: 'ta', name: 'Strategy TA', icon: MessageSquare },
+    { id: 'mock', name: 'The Final Gauntlet', icon: ShieldAlert },
+    { id: 'mastery', name: 'Skill Genome', icon: Zap },
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden transition-colors duration-300">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden transition-colors duration-300 font-sans">
       {/* Sidebar */}
       <aside className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col shadow-lg transition-colors duration-300">
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
@@ -77,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({
           <img src={user.picture} alt={user.name} className="w-12 h-12 rounded-full border-2 border-white dark:border-gray-700 shadow-sm" />
           <div className="flex-1 overflow-hidden">
             <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{user.given_name}</p>
-            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">Free Access Enabled</p>
+            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">Ready for Battle</p>
           </div>
           <button onClick={onLogout} title="Logout" className="p-2 text-gray-400 hover:text-red-600 transition-colors">
             <LogOut size={18} />
@@ -87,7 +87,7 @@ const Layout: React.FC<LayoutProps> = ({
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">
           <div className="mb-6">
-            <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-4 mb-2">Study Tools</h2>
+            <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-4 mb-2">Battle Plan</h2>
             <div className="space-y-1">
               {tools.map(tool => (
                 <button
@@ -108,12 +108,12 @@ const Layout: React.FC<LayoutProps> = ({
 
           <div className="mt-8">
             <div className="flex items-center justify-between px-4 mb-2">
-              <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">History</h2>
+              <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Cleared Sessions</h2>
               <History size={14} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="space-y-2">
               {userData.sessions.length === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-gray-600 italic px-4">No saved sessions yet.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-600 italic px-4">No cleared material yet.</p>
               ) : (
                 userData.sessions.map(session => (
                   <div key={session.id} className="group bg-gray-50 dark:bg-gray-800/30 rounded-xl overflow-hidden border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all">
@@ -164,7 +164,7 @@ const Layout: React.FC<LayoutProps> = ({
         <div className="p-6 border-t border-gray-100 dark:border-gray-800">
            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800 text-center">
               <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">Infinite Limits</p>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-500 opacity-75">All features are unlocked for your academic success.</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-500 opacity-75">Full access enabled. No limits on mastery.</p>
            </div>
         </div>
       </aside>

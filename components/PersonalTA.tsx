@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { MessageSquare, Send, Loader2, Sparkles, History, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Sparkles, History, ThumbsUp, ThumbsDown, Check, Target } from 'lucide-react';
 import { Session } from '../types';
 import { localAnswerer } from '../services/ai_engine';
 import { saveLearningFeedback } from '../services/firebase';
@@ -36,7 +36,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
         .map(n => `Topic: ${n.topic}\nContent: ${n.content}`)
         .join('\n\n---\n\n');
 
-      const response = await localAnswerer(userMsg, fullContext || "No study material found in history.");
+      const response = await localAnswerer(userMsg, fullContext || "You haven't cleared any material yet.");
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: response, 
@@ -45,7 +45,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
     } catch (err) {
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "I encountered an error while consulting your notes.",
+        content: "Strategy TA is thinking too hard. Try again.",
         id: `err_${Date.now()}`
       }]);
     } finally {
@@ -55,14 +55,12 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
 
   const submitFeedback = async (messageIndex: number, satisfaction: number) => {
     const msg = messages[messageIndex];
-    const prevMsg = messages[messageIndex - 1]; // Assume the message before was the user prompt
+    const prevMsg = messages[messageIndex - 1];
     
     if (msg.role !== 'assistant' || !prevMsg) return;
 
-    // Report feedback (Anonymously)
     await saveLearningFeedback(prevMsg.content, msg.content, satisfaction);
 
-    // Update UI to show feedback was given
     setMessages(prev => prev.map((m, i) => 
       i === messageIndex ? { ...m, feedbackGiven: true } : m
     ));
@@ -72,12 +70,12 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
     <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
       <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-950 z-10">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Personal TA</h2>
-          <p className="text-gray-500 dark:text-gray-400">Your dedicated tutor, powered by your entire study history.</p>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Strategy TA</h2>
+          <p className="text-gray-500 dark:text-gray-400">"Relax. I know exactly what matters. Follow me."</p>
         </div>
         <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-2xl">
-          <History size={18} className="text-blue-600 dark:text-blue-400" />
-          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{sessions.length} Sessions Connected</span>
+          <Target size={18} className="text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{sessions.length} Battle Units Connected</span>
         </div>
       </div>
 
@@ -87,8 +85,8 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
             <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 animate-pulse">
               <Sparkles size={32} />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Ask your TA anything</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">"How does photosynthesis relate to the carbon cycle we studied last week?"</p>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Question your plan</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">"What's the most likely high-yield topic from the modules I've cleared?"</p>
           </div>
         ) : (
           messages.map((m, i) => (
@@ -102,27 +100,24 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
                 </div>
                 {m.role === 'assistant' && !m.feedbackGiven && (
-                  <div className="flex items-center gap-2 mt-2 px-2 animate-in fade-in slide-in-from-top-1 duration-500">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1">Help me learn?</span>
+                  <div className="flex items-center gap-2 mt-2 px-2">
                     <button 
                       onClick={() => submitFeedback(i, 1)}
-                      className="p-1.5 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                      title="Accurate and helpful"
+                      className="p-1.5 text-gray-400 hover:text-emerald-500 transition-colors"
                     >
                       <ThumbsUp size={14} />
                     </button>
                     <button 
                       onClick={() => submitFeedback(i, -1)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      title="Incorrect or unhelpful"
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <ThumbsDown size={14} />
                     </button>
                   </div>
                 )}
                 {m.role === 'assistant' && m.feedbackGiven && (
-                   <div className="flex items-center gap-1 mt-2 px-2 text-[10px] font-bold text-emerald-500 uppercase tracking-widest animate-in zoom-in-95">
-                     <Check size={12} /> Thanks!
+                   <div className="flex items-center gap-1 mt-2 px-2 text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+                     <Check size={12} /> Learned
                    </div>
                 )}
               </div>
@@ -133,7 +128,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
           <div className="flex justify-start">
             <div className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-6 rounded-3xl rounded-tl-none flex items-center gap-3">
               <Loader2 size={16} className="animate-spin text-blue-600 dark:text-blue-400" />
-              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">TA is thinking...</span>
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Calculations...</span>
             </div>
           </div>
         ) }
@@ -146,7 +141,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Search your knowledge base..."
+            placeholder="Consult Strategy TA..."
             className="w-full pl-6 pr-16 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/10 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all font-medium"
           />
           <button 

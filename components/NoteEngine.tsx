@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
+import { Upload, File, Loader2, Settings, ChevronRight, Save, Wand2, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target } from 'lucide-react';
 import { Chunk, NoteBlock, UserData } from '../types';
 import { generateLocalOutline, synthesizeLocalNote, localAnswerer, extractTextFromFile, chunkText } from '../services/ai_engine';
 import { saveLearningFeedback } from '../services/firebase';
@@ -50,7 +50,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setProcessStatus(`Processing ${file.name}...`);
+        setProcessStatus(`Prioritizing ${file.name}...`);
         const extractedText = await extractTextFromFile(file);
         const fileChunks = chunkText(extractedText, `file_${Date.now()}_${i}`);
         newChunks.push(...fileChunks);
@@ -60,7 +60,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       setStep('workspace');
     } catch (err) {
       console.error(err);
-      alert("Some files could not be processed. Please check the file format and try again.");
+      alert("Failed to prioritize these files. Check format and try again.");
     } finally {
       setIsProcessing(false);
       setProcessStatus('');
@@ -70,14 +70,14 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const handleGenerateOutline = async () => {
     if (allChunks.length === 0) return;
     setIsProcessing(true);
-    setProcessStatus('Analyzing content for logical flow...');
+    setProcessStatus('Calculating optimal clearing path...');
     try {
       const result = await generateLocalOutline(allChunks);
       if (result.outline && result.outline.length > 0) {
         setOutline(result.outline);
         setEditableOutlineText(result.outline.map((o: any) => o.topic).join('\n'));
       } else {
-        const topics = ["Overview", "Key Concepts", "Deep Dive", "Application", "Conclusion"];
+        const topics = ["Exam Overview", "Core High-Yield Concepts", "Critical Reasoning", "Application Patterns", "Final Clearance"];
         setEditableOutlineText(topics.join('\n'));
       }
     } catch (err) {
@@ -105,7 +105,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         const content = await synthesizeLocalNote(topic, relevantText || allChunks.slice(0, 3).map(c => c.text).join('\n'), instructions);
         synthesized.push({ topic, content: content || "", source_chunks: relevantChunkIds });
       } catch (err) {
-        synthesized.push({ topic, content: "Failed to synthesize content for this topic.", source_chunks: [] });
+        synthesized.push({ topic, content: "Clearance failed for this unit.", source_chunks: [] });
       }
     }
 
@@ -124,9 +124,9 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     try {
       const context = finalNotes.map(n => n.content).join('\n\n');
       const answer = await localAnswerer(userMsg, context);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: answer || "I couldn't find an answer in your notes." }]);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: answer || "This isn't in the battle plan." }]);
     } catch (err) {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: "An error occurred while answering." }]);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: "Strategy TA is temporarily offline." }]);
     } finally {
       setIsAnswering(false);
     }
@@ -149,11 +149,11 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] p-8">
         <div className="w-full max-w-xl text-center space-y-6">
-          <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto animate-bounce-slow">
-            <Upload size={32} />
+          <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto animate-bounce-slow shadow-xl">
+            <Target size={32} />
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Note & Lesson Engine</h2>
-          <p className="text-gray-500 dark:text-gray-400">Upload your study material (PDF, Image, or Audio) to generate high-impact revision notes.</p>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Clearance Engine</h2>
+          <p className="text-gray-500 dark:text-gray-400">Upload your terrifyingly large syllabus. We'll turn it into a 6-hour plan.</p>
           
           <div 
             onClick={() => !isProcessing && fileInputRef.current?.click()}
@@ -173,17 +173,16 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                 <File className={`text-gray-400 dark:text-gray-500 ${!isProcessing ? 'group-hover:text-blue-600 dark:group-hover:text-blue-400' : ''}`} size={32} />
               </div>
               <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">
-                {isProcessing ? 'Scanning files...' : 'Click to select files from your device'}
+                {isProcessing ? 'Chunking content...' : 'Click to select exam material'}
               </div>
-              <div className="text-xs text-gray-400 dark:text-gray-600">PDF, JPG, PNG, MP3, WAV supported</div>
             </div>
           </div>
           
           {isProcessing && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl flex items-center gap-4 text-blue-700 dark:text-blue-400 animate-in fade-in slide-in-from-top-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl flex items-center gap-4 text-blue-700 dark:text-blue-400">
               <Loader2 className="animate-spin" />
               <div className="text-left">
-                <p className="font-bold text-sm">Deep Intelligence at work</p>
+                <p className="font-bold text-sm">Ruthless Prioritization in Progress</p>
                 <p className="text-xs opacity-75">{processStatus}</p>
               </div>
             </div>
@@ -200,10 +199,10 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           <div>
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
               <CheckCircle2 size={16} />
-              <span className="text-xs font-bold uppercase tracking-wider">Content Extracted Successfully</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Exam Content Compiled</span>
             </div>
-            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Vekkam Workspace</h2>
-            <p className="text-gray-500 dark:text-gray-400">Review your content and prepare for synthesis.</p>
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Clearance Workspace</h2>
+            <p className="text-gray-500 dark:text-gray-400">Review the clearing path. Nothing you don't need makes it through.</p>
           </div>
           <button 
             onClick={handleGenerateOutline}
@@ -211,38 +210,33 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
             className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-200"
           >
             {isProcessing ? <Loader2 className="animate-spin" /> : <Wand2 size={20} />}
-            Generate Outline
+            Refine Clearance Path
           </button>
         </header>
 
         <div className="grid md:grid-cols-2 gap-8">
           <div className="space-y-4">
-            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><Settings size={20} /> Content Strategy</h3>
+            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><Settings size={20} /> Modular Battle Units</h3>
             <textarea
               value={editableOutlineText}
               onChange={(e) => setEditableOutlineText(e.target.value)}
-              placeholder="Your outline will appear here. You can also manually add topics..."
               className="w-full h-80 p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl text-gray-700 dark:text-gray-300 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all resize-none font-medium"
             />
           </div>
           <div className="space-y-4">
-            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><ArrowRight size={20} /> Instructions (Optional)</h3>
+            <h3 className="text-lg font-bold flex items-center gap-2 dark:text-gray-200"><ArrowRight size={20} /> Mission Constraints</h3>
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="e.g. 'Explain like I'm 15' or 'Focus on technical formulas'..."
+              placeholder="e.g. 'Exam is math-heavy', 'Only high-yield topics'..."
               className="w-full h-40 p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl text-gray-700 dark:text-gray-300 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all resize-none font-medium"
             />
-            <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-3xl border border-amber-100 dark:border-amber-900/30">
-               <h4 className="font-bold text-amber-800 dark:text-amber-500 mb-2">Pro Tip</h4>
-               <p className="text-sm text-amber-700 dark:text-amber-600">Adding specific instructions helps the AI prioritize the right level of depth for your upcoming exam.</p>
-            </div>
             <button 
               onClick={handleSynthesize}
               disabled={!editableOutlineText.trim()}
               className="w-full py-4 bg-gray-900 dark:bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-gray-800 dark:hover:bg-blue-700 transition-all shadow-xl shadow-gray-200 dark:shadow-blue-900/20 disabled:opacity-50"
             >
-              Synthesize Unified Notes
+              Start Synthesis
             </button>
           </div>
         </div>
@@ -256,11 +250,11 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
         <div className="relative">
           <div className="w-24 h-24 border-4 border-blue-100 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
           <div className="absolute inset-0 flex items-center justify-center text-blue-600 dark:text-blue-400">
-            <Wand2 size={24} />
+            <Target size={24} />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Multimodal Synthesis In Progress...</h2>
-        <p className="text-gray-500 dark:text-gray-400 max-w-sm">We're weaving your study material into a cohesive learning experience using our multimodal engine.</p>
+        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Compressing Syllabus...</h2>
+        <p className="text-gray-500 dark:text-gray-400 max-w-sm">We're weaving your material into a question-first battle plan.</p>
       </div>
     );
   }
@@ -269,7 +263,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
       <div className="flex-1 flex overflow-hidden">
         <div className="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto p-6 bg-gray-50/50 dark:bg-gray-900/50">
-           <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6">Study Topics</h3>
+           <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6">Battle Units</h3>
            <div className="space-y-2">
              {finalNotes.map((note, idx) => (
                <button
@@ -292,7 +286,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           {selectedIndex !== null && finalNotes[selectedIndex] ? (
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase">Module {selectedIndex + 1}</span>
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase">Unit {selectedIndex + 1}</span>
                 <button className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Save size={20} /></button>
               </div>
               <h2 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">{finalNotes[selectedIndex].topic}</h2>
@@ -303,7 +297,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600">
                <BookOpen size={48} className="mb-4 opacity-20" />
-               <p>Select a topic from the sidebar to start learning</p>
+               <p>Select a battle unit to begin clearing.</p>
             </div>
           )}
         </div>
@@ -312,18 +306,18 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       <div className="h-64 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors">
         <div className="px-8 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2 bg-white dark:bg-gray-900/80">
           <MessageSquare size={16} className="text-blue-600 dark:text-blue-400" />
-          <span className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Contextual Chat</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Strategy TA</span>
         </div>
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-4">
           {chatMessages.length === 0 && (
-            <p className="text-center text-sm text-gray-400 dark:text-gray-600 pt-4">Ask a question about your newly generated notes...</p>
+            <p className="text-center text-sm text-gray-400 dark:text-gray-600 pt-4 italic">Strategy TA: "Ask anything about this clearance module. I know exactly what matters."</p>
           )}
           {chatMessages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className="max-w-[70%] flex flex-col items-end">
                 <div className={`p-4 rounded-3xl text-sm ${
                   m.role === 'user' 
-                  ? 'bg-blue-600 text-white' 
+                  ? 'bg-blue-600 text-white shadow-sm' 
                   : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 shadow-sm'
                 }`}>
                   {m.content}
@@ -333,14 +327,12 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                     <button 
                       onClick={() => submitFeedback(i, 1)}
                       className="p-1 text-gray-400 hover:text-emerald-500 transition-colors"
-                      title="Helpful"
                     >
                       <ThumbsUp size={12} />
                     </button>
                     <button 
                       onClick={() => submitFeedback(i, -1)}
                       className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                      title="Unhelpful"
                     >
                       <ThumbsDown size={12} />
                     </button>
@@ -348,13 +340,13 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                 )}
                 {m.role === 'assistant' && m.feedbackGiven && (
                    <div className="mt-1 px-1 text-[9px] font-bold text-emerald-500 flex items-center gap-1 uppercase tracking-tighter">
-                     <Check size={10} /> Learning
+                     <Check size={10} /> Verified
                    </div>
                 )}
               </div>
             </div>
           ))}
-          {isAnswering && <div className="text-xs text-blue-600 dark:text-blue-400 animate-pulse px-4">TA is thinking...</div>}
+          {isAnswering && <div className="text-xs text-blue-600 dark:text-blue-400 animate-pulse px-4">Strategizing...</div>}
         </div>
         <div className="px-8 pb-8">
            <div className="relative">
@@ -363,7 +355,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleChat()}
-              placeholder="Ask anything about this session..."
+              placeholder="Query battle unit details..."
               className="w-full pl-6 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl outline-none focus:border-blue-400 dark:focus:border-blue-600 transition-colors shadow-sm"
              />
              <button onClick={handleChat} className="absolute right-2 top-1.5 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
