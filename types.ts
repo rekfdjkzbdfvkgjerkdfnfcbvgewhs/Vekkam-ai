@@ -20,9 +20,42 @@ export interface Session {
   notes: NoteBlock[];
 }
 
+export interface Badge {
+  id: string;
+  type: 'syllabus_survivor';
+  title: string;
+  description: string;
+  achievedAt: string; // ISO date string
+  metadata: {
+    pagesCleared: number;
+    topic: string;
+    aiAccuracy: string; // e.g., "0 Hallucinations"
+  };
+}
+
+export interface GroupMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string; // ISO date string or serverTimestamp
+}
+
+export interface StudyGroup {
+  id: string;
+  name: string;
+  accessCode: string;
+  creatorId: string;
+  members: { id: string; name: string; picture: string }[];
+  messages: GroupMessage[]; // Embedded or separate subcollection
+}
+
+
 // Simplified user metadata
 export interface UserData {
   total_analyses: number;
+  badges?: Badge[];
+  groupIds?: string[]; // IDs of study groups the user belongs to
 }
 
 export interface Chunk {

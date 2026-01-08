@@ -11,7 +11,9 @@ import {
   ChevronDown,
   Trash2,
   Sun,
-  Moon
+  Moon,
+  Users, // New icon for Study Groups
+  Award // New icon for Achievements
 } from 'lucide-react';
 import { UserInfo, UserData, Session } from '../types';
 
@@ -51,6 +53,8 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'ta', name: 'Strategy TA', icon: MessageSquare },
     { id: 'mock', name: 'The Final Gauntlet', icon: ShieldAlert },
     { id: 'mastery', name: 'Skill Genome', icon: Zap },
+    { id: 'groups', name: 'Study Groups', icon: Users }, // New tool
+    { id: 'achievements', name: 'Achievements', icon: Award }, // New tool
   ];
 
   return (

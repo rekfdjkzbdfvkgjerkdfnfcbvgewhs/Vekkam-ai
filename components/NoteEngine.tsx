@@ -1,17 +1,19 @@
 
 import React, { useState, useRef } from 'react';
-import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target } from 'lucide-react';
-import { Chunk, NoteBlock, UserData } from '../types';
+import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy } from 'lucide-react';
+import { Chunk, NoteBlock, UserData, Badge } from '../types';
 import { localAnswerer, processSyllabusFile } from '../services/ai_engine';
-import { saveLearningFeedback } from '../services/firebase';
+import { saveLearningFeedback, saveUserBadge } from '../services/firebase';
 import ReactMarkdown from 'react-markdown';
 
 interface NoteEngineProps {
   allChunks: Chunk[];
   userData: UserData;
   setAllChunks: React.Dispatch<React.SetStateAction<Chunk[]>>;
-  onSaveSession: (notes: NoteBlock[]) => void;
+  onSaveSession: (notes: NoteBlock[], fullTextContent: string) => void;
   savedNotes?: NoteBlock[];
+  userPicture: string;
+  userId: string;
 }
 
 interface ChatMessage {
@@ -25,7 +27,9 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   userData, 
   setAllChunks, 
   onSaveSession, 
-  savedNotes 
+  savedNotes,
+  userPicture,
+  userId
 }) => {
   const [step, setStep] = useState<'upload' | 'synthesizing' | 'results'>(savedNotes ? 'results' : 'upload');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -67,7 +71,23 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       setAllChunks([{ chunk_id: 'syllabus_full', text: fullText }]); 
       setOutline(backendOutline);
       setFinalNotes(backendFinalNotes);
-      onSaveSession(backendFinalNotes); // Save the new session immediately
+      onSaveSession(backendFinalNotes, fullText); // Pass fullText to parent for badge calculation
+
+      // Award "Syllabus Survivor" badge
+      const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250); // Estimate pages based on words
+      const badge: Badge = {
+        id: `survivor_${Date.now()}`,
+        type: 'syllabus_survivor',
+        title: 'Syllabus Survivor',
+        description: `Conquered a ${pagesCleared} page syllabus in record time.`,
+        achievedAt: new Date().toISOString(),
+        metadata: {
+          pagesCleared: pagesCleared,
+          topic: backendFinalNotes[0]?.topic || "Unknown Topic",
+          aiAccuracy: "0 Hallucinations"
+        }
+      };
+      await saveUserBadge(userId, badge);
 
       setStep('results'); // Directly go to results after processing
     } catch (err: any) {
@@ -194,6 +214,13 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               <h2 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">{finalNotes[selectedIndex].topic}</h2>
               <div className="prose prose-blue dark:prose-invert max-w-none prose-headings:font-extrabold prose-p:text-gray-600 dark:prose-p:text-gray-400 prose-p:leading-relaxed transition-colors">
                 <ReactMarkdown>{finalNotes[selectedIndex].content}</ReactMarkdown>
+              </div>
+              <div className="mt-8 pt-8 border-t border-gray-100 dark:border-gray-800 text-center">
+                <button
+                  className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Trophy size={20} /> Unlock Next Battle 
+                </button>
               </div>
             </div>
           ) : (

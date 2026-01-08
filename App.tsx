@@ -6,10 +6,11 @@ import NoteEngine from './components/NoteEngine';
 import AuthOverlay from './components/AuthOverlay';
 import PoliciesView from './components/PoliciesView';
 import PersonalTA from './components/PersonalTA';
-// Changed import for MockTestGenerator to a named import.
 import { MockTestGenerator } from './components/MockTestGenerator';
 import MasteryEngine from './components/MasteryEngine';
-import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
+import StudyGroups from './components/StudyGroups'; // New import
+import Achievements from './components/Achievements'; // New import
+import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge } from './types';
 import { Loader2, Info } from 'lucide-react';
 import { 
   auth, 
@@ -18,7 +19,9 @@ import {
   ensureUserDoc, 
   saveFirestoreSession, 
   getFirestoreSessions,
-  deleteFirestoreSession 
+  deleteFirestoreSession,
+  getStudyGroupsForUser, // New import
+  getUserBadges // New import
 } from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -31,9 +34,13 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [userData, setUserData] = useState<UserData>({
-    total_analyses: 0
+    total_analyses: 0,
+    badges: [], // Initialize
+    groupIds: [] // Initialize
   });
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [studyGroups, setStudyGroups] = useState<StudyGroup[]>([]); // New state for study groups
+  const [userBadges, setUserBadges] = useState<Badge[]>([]); // New state for badges
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
@@ -66,7 +73,9 @@ const App: React.FC = () => {
         setUser(userInfo);
 
         const initialData: UserData = {
-          total_analyses: 0
+          total_analyses: 0,
+          badges: [],
+          groupIds: []
         };
         
         try {
@@ -74,22 +83,33 @@ const App: React.FC = () => {
           const userSessions = await getFirestoreSessions(firebaseUser.uid);
           setSessions(userSessions);
 
+          const userGroups = await getStudyGroupsForUser(firebaseUser.uid); // Fetch groups
+          setStudyGroups(userGroups);
+
+          const fetchedBadges = await getUserBadges(firebaseUser.uid); // Fetch badges
+          setUserBadges(fetchedBadges);
+
           const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data() as UserData;
               setUserData(data);
+              setUserBadges(data.badges || []); // Update badges from snapshot
+              // No direct update to studyGroups from snapshot here as group details are in 'study_groups' collection
+              // but groupIds are updated here. If group data needs to be live, a separate listener is needed.
             }
           });
 
           setLoading(false);
           return () => unsubDoc();
         } catch (err) {
-          console.error("Error ensuring user doc:", err);
+          console.error("Error ensuring user doc or fetching data:", err);
           setLoading(false);
         }
       } else {
         setUser(null);
         setSessions([]);
+        setStudyGroups([]); // Clear groups
+        setUserBadges([]); // Clear badges
         setLoading(false);
       }
     });
@@ -102,6 +122,8 @@ const App: React.FC = () => {
       await signOut(auth);
       setAllChunks([]);
       setSessions([]);
+      setStudyGroups([]); // Clear groups
+      setUserBadges([]); // Clear badges
       setActiveSessionNotes(undefined);
       setActiveTool('notes');
     } catch (error) {
@@ -109,7 +131,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveSession = async (notes: NoteBlock[]) => {
+  const handleSaveSession = async (notes: NoteBlock[], fullTextContent: string) => {
     if (!user) return;
 
     const newSession: Session = {
@@ -125,6 +147,7 @@ const App: React.FC = () => {
         total_analyses: (userData.total_analyses || 0) + 1
       });
       setSessions(prev => [newSession, ...prev]);
+      // Badges are now handled inside NoteEngine
     } catch (err) {
       console.error("Failed to save session:", err);
     }
@@ -215,6 +238,8 @@ const App: React.FC = () => {
               setAllChunks={setAllChunks} 
               onSaveSession={handleSaveSession}
               savedNotes={activeSessionNotes}
+              userPicture={user.picture}
+              userId={user.id}
             />
           )}
           {activeTool === 'ta' && (
@@ -225,6 +250,18 @@ const App: React.FC = () => {
           )}
           {activeTool === 'mastery' && (
             <MasteryEngine chunks={allChunks} />
+          )}
+          {activeTool === 'groups' && user && ( // Render StudyGroups component
+            <StudyGroups 
+              user={user} 
+              userStudyGroups={studyGroups} 
+              setUserStudyGroups={setStudyGroups}
+            />
+          )}
+          {activeTool === 'achievements' && user && ( // Render Achievements component
+            <Achievements 
+              userBadges={userBadges} 
+            />
           )}
         </div>
       </Layout>
