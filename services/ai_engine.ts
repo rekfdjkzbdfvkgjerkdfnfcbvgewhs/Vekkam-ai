@@ -1,4 +1,4 @@
-import { Chunk } from "../types";
+import { Chunk, NoteBlock } from "../types";
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
@@ -28,12 +28,37 @@ async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYS
 }
 
 /**
- * Extracts text content from various file types.
- * Fast path for .txt files (local processing).
- * Proxy path for PDF, images, and audio.
+ * Sends a raw file to the backend for full syllabus processing (extraction, chunking, LLM inference, synthesis).
+ * Replaces client-side extractTextFromFile, chunkText, generateLocalOutline, synthesizeLocalNote.
+ */
+export const processSyllabusFile = async (file: File, instructions: string): Promise<{ outline: { topic: string; relevant_chunks: string[] }[], finalNotes: NoteBlock[], fullText: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('instructions', instructions);
+
+  const response = await fetch('/api/process-syllabus', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || "Failed to process syllabus on server.");
+  }
+
+  const result = await response.json();
+  return result;
+};
+
+
+// The following functions remain for other parts of the app (e.g., PersonalTA, MockTestGenerator)
+// or for local-only .txt file extraction if still desired (though primary processing uses backend)
+
+/**
+ * Extracts text content from plain text files locally.
+ * For other file types, it's expected that processSyllabusFile handles it via the backend.
  */
 export const extractTextFromFile = async (file: File): Promise<string> => {
-  // Fast Path: Plain Text Files
   if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -42,51 +67,15 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
       reader.readAsText(file);
     });
   }
-
-  // Multimodal Path: Gemini Proxy
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      try {
-        const result = reader.result as string;
-        if (!result) throw new Error("File reading resulted in empty data.");
-        
-        const base64Data = result.split(',')[1];
-        const isAudio = file.type.startsWith('audio/');
-        
-        const prompt = isAudio 
-          ? "Provide a verbatim transcription. No summaries. Pure text. Output only the content."
-          : "Extract all text from this material. Maintain structure and hierarchy. Output only the content.";
-
-        const response = await fetch('/api/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            base64Data,
-            mimeType: file.type || 'application/octet-stream', // Fallback
-            prompt
-          })
-        });
-
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error || "Extraction failed on server.");
-        }
-
-        const data = await response.json();
-        resolve(data.text || "");
-      } catch (err) {
-        console.error("Extraction Proxy Error:", err);
-        reject(err instanceof Error ? err : new Error("Unknown extraction error"));
-      }
-    };
-    reader.onerror = () => reject(new Error("File reading failed locally."));
-    reader.readAsDataURL(file);
-  });
+  // For other types, this function is no longer the primary path for full processing.
+  // It would require a specific backend endpoint if simple text extraction for non-txt is needed *without* full processing.
+  // For now, we assume `processSyllabusFile` is the main entry for complex files.
+  throw new Error("Complex file types (PDF, images, audio) must be processed via the full syllabus processing pipeline.");
 };
 
+
 /**
- * Chunks large text into smaller segments
+ * Chunks large text into smaller segments (kept for potential client-side use, but primary chunking now backend).
  */
 export const chunkText = (text: string, sourceId: string, size: number = 500, overlap: number = 50): Chunk[] => {
   if (!text) return [];
