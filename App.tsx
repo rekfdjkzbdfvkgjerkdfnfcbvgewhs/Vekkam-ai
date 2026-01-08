@@ -6,10 +6,11 @@ import NoteEngine from './components/NoteEngine';
 import AuthOverlay from './components/AuthOverlay';
 import PoliciesView from './components/PoliciesView';
 import PersonalTA from './components/PersonalTA';
-import MockTestGenerator from './components/MockTestGenerator';
+// Changed import for MockTestGenerator to a named import.
+import { MockTestGenerator } from './components/MockTestGenerator';
 import MasteryEngine from './components/MasteryEngine';
 import { UserInfo, UserData, Session, NoteBlock, Chunk } from './types';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Info } from 'lucide-react';
 import { 
   auth, 
   db, 
@@ -36,6 +37,9 @@ const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
+
+  // LLM Fallback state - set to true to indicate temporary Gemini usage
+  const [showLLMFallbackAlert, setShowLLMFallbackAlert] = useState(true);
 
   // Dark mode effect
   useEffect(() => {
@@ -194,6 +198,15 @@ const App: React.FC = () => {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
       >
+        {showLLMFallbackAlert && (
+          <div className="bg-amber-500 dark:bg-amber-700 text-white p-3 flex items-center justify-center gap-3 text-sm font-medium">
+            <Info size={18} />
+            <span>Facing some problems with our primary LLM. Temporarily using Gemini for text generation.</span>
+            <button onClick={() => setShowLLMFallbackAlert(false)} className="ml-auto p-1 rounded-md hover:bg-white/20 transition-colors">
+              Dismiss
+            </button>
+          </div>
+        )}
         <div className="h-full">
           {activeTool === 'notes' && (
             <NoteEngine 

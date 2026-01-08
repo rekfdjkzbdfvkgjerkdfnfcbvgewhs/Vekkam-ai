@@ -10,7 +10,16 @@ app.use(cors());
 // Multer will handle the body parsing for file uploads.
 app.use(express.json({ limit: '50mb' })); // Keep for non-file JSON requests
 
+// GoogleGenAI instance for multimodal extraction (using default API_KEY, typically for Gemini)
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// GoogleGenAI instance for text generation fallback 1 (using GEMINI_KEY)
+const geminiFallbackAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+// GoogleGenAI instance for text generation fallback 2 (using LLAMA_KEY)
+const llamaFallbackAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY });
+
+
+const LLM_PRIMARY_URL = "https://inference-llm.onrender.com/generate";
+const USE_GEMINI_FALLBACK_FORCE = process.env.USE_GEMINI_FALLBACK === 'true'; // Set this env var to 'true' to always use Gemini fallback for text generation
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
@@ -28,38 +37,104 @@ const upload = multer({
 });
 
 /**
- * Utility to call the Qwen backend via Vercel proxy
+ * Utility to call the primary LLM (Qwen on Render) or fallback to Gemini, then Llama.
  */
-async function callQwen(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
+async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
-  
-  const r = await fetch(
-    "https://inference-llm.onrender.com/generate",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: fullPrompt })
-    }
-  );
+  let responseText = '';
 
-  if (!r.ok) {
-    const text = await r.text();
-    throw new Error('Clearing failed at the engine level: ' + text);
+  // Attempt 1: Forced Gemini Fallback (if env var is true)
+  if (USE_GEMINI_FALLBACK_FORCE) {
+    console.log("Attempting text generation with Forced Gemini Fallback (USE_GEMINI_FALLBACK_FORCE is true).");
+    try {
+      const response = await geminiFallbackAI.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: fullPrompt,
+        config: { systemInstruction: systemInstruction }
+      });
+      responseText = response.text;
+      if (responseText) {
+        console.log("Text generation successful with Forced Gemini Fallback.");
+        return responseText;
+      }
+    } catch (geminiError) {
+      console.warn("Forced Gemini Fallback failed:", geminiError.message);
+    }
+  } else {
+    // Attempt 1: Primary LLM
+    console.log("Attempting text generation with Primary LLM (Render).");
+    try {
+      const r = await fetch(
+        LLM_PRIMARY_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: fullPrompt })
+        }
+      );
+
+      if (r.ok) {
+        const data = await r.json();
+        responseText = data.text || data.response || data.generated_text || "";
+        if (responseText) {
+          console.log("Text generation successful with Primary LLM (Render).");
+          return responseText;
+        }
+      }
+      const errorText = await r.text();
+      console.warn(`Primary LLM (${LLM_PRIMARY_URL}) failed with status ${r.status}: ${errorText}.`);
+    } catch (error) {
+      console.warn(`Primary LLM (${LLM_PRIMARY_URL}) fetch failed: ${error.message}.`);
+    }
   }
 
-  const data = await r.json();
-  return data.text || data.response || data.generated_text || "";
+  // Attempt 2: Gemini Fallback
+  console.log("Attempting text generation with Gemini Fallback.");
+  try {
+    const response = await geminiFallbackAI.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: fullPrompt,
+      config: { systemInstruction: systemInstruction }
+    });
+    responseText = response.text;
+    if (responseText) {
+      console.log("Text generation successful with Gemini Fallback.");
+      return responseText;
+    }
+  } catch (geminiError) {
+    console.warn("Gemini Fallback failed:", geminiError.message);
+  }
+
+  // Attempt 3: Llama Fallback
+  console.log("Attempting text generation with Llama Fallback.");
+  try {
+    const response = await llamaFallbackAI.models.generateContent({
+      model: 'gemini-3-flash-preview', // Assuming LLAMA_KEY points to another Gemini endpoint
+      contents: fullPrompt,
+      config: { systemInstruction: systemInstruction }
+    });
+    responseText = response.text;
+    if (responseText) {
+      console.log("Text generation successful with Llama Fallback.");
+      return responseText;
+    }
+  } catch (llamaError) {
+    console.error("All LLM fallbacks failed:", llamaError.message);
+    throw new Error("All LLM fallbacks failed: " + llamaError.message);
+  }
+  // If we reach here, no LLM provided a valid response
+  throw new Error("No LLM provided a valid response after all fallbacks.");
 }
 
 /**
- * Helper to extract text from a file buffer using Google Gemini API.
+ * Helper to extract text from a file buffer using Google Gemini API (multimodal).
  */
 async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
   const base64Data = buffer.toString('base64');
   const isAudio = mimeType.startsWith('audio/');
   const modelName = isAudio
     ? 'gemini-2.5-flash-native-audio-preview-12-2025'
-    : 'gemini-3-flash-preview';
+    : 'gemini-3-flash-preview'; // For image/PDF extraction
 
   try {
     const response = await ai.models.generateContent({
@@ -84,6 +159,7 @@ async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
     if (!text && response.candidates?.[0]?.finishReason === 'SAFETY') {
       throw new Error("Content flagged for safety by AI. Please upload academic material.");
     }
+    console.log("Gemini used for multimodal extraction.");
     return text;
   } catch (error) {
     console.error("Gemini Extraction Error:", error);
@@ -113,13 +189,13 @@ function chunkText(text, maxChars = 1200) {
 }
 
 
-// Proxy for Qwen Generation (text-to-text only)
+// Proxy for Qwen Generation (text-to-text only) - now uses callLLM with fallback
 app.post('/api/generate', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
   try {
-    const responseText = await callQwen(prompt);
+    const responseText = await callLLM(prompt);
     res.status(200).json({ text: responseText });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -174,9 +250,9 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     // 3. Process Chunks via Inference Backend
     const chunkResponses = [];
     for (const chunk of chunks) {
-      const promptForChunk = `Based on the following study material, identify key concepts, definitions, and important facts. Prioritize information relevant for an exam. Return the raw high-yield information.
+      const promptForChunk = `Based on the following study material, identify key concepts, definitions, and important facts. Prioritize information relevant for an "exam. Return the raw high-yield information.
       Material: ${chunk}`;
-      const response = await callQwen(promptForChunk);
+      const response = await callLLM(promptForChunk); // Use callLLM for fallback
       chunkResponses.push(response);
     }
 
@@ -189,7 +265,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     
     Synthesize this:
     ${mergedContent}`;
-    const finalSynthesizedText = await callQwen(finalSynthesisPrompt);
+    const finalSynthesizedText = await callLLM(finalSynthesisPrompt); // Use callLLM for fallback
 
     // 5. Generate Outline
     const outlinePrompt = `Divide the following synthesized material into exactly 5 ruthless battle units for the exam. 
@@ -198,7 +274,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     Format: {"outline": [{"topic": "Name", "relevant_chunks": []}]} (relevant_chunks can be empty as this is post-synthesis)
     
     Material: ${finalSynthesizedText.substring(0, 2000)}... (truncated for outline generation to save tokens)`; // Limit input for outline generation
-    const outlineResultRaw = await callQwen(outlinePrompt);
+    const outlineResultRaw = await callLLM(outlinePrompt); // Use callLLM for fallback
     let outline = [];
     try {
       const cleanJson = outlineResultRaw.replace(/```json|```/g, '').trim();
@@ -229,7 +305,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 app.all('/api/cron/ping', async (req, res) => {
   console.log("Triggering uptime ping for Render backend...");
   try {
-    const renderUrl = "https://inference-llm.onrender.com/generate";
+    const renderUrl = LLM_PRIMARY_URL; // Still ping the primary LLM to try and keep it warm
     const response = await fetch(renderUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -239,7 +315,7 @@ app.all('/api/cron/ping', async (req, res) => {
     const status = response.status;
     res.status(200).json({ 
       success: true, 
-      message: "Ping successful", 
+      message: "Ping successful to primary LLM", 
       backendStatus: status 
     });
   } catch (error) {
