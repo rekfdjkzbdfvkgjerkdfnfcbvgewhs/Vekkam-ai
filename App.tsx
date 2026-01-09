@@ -27,6 +27,7 @@ import {
 } from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -217,7 +218,10 @@ const App: React.FC = () => {
   if (!user) {
     return (
       <>
+        {/* Vercel Analytics & Speed Insights */}
         <Analytics />
+        <SpeedInsights />
+        
         <LandingPage 
           onLogin={() => setAuthMode('login')} 
           onViewPolicies={() => setView('policies')} 
@@ -236,7 +240,10 @@ const App: React.FC = () => {
 
   return (
     <>
+      {/* Vercel Analytics & Speed Insights */}
       <Analytics />
+      <SpeedInsights />
+
       <Layout 
         user={user} 
         userData={layoutUserData} 
