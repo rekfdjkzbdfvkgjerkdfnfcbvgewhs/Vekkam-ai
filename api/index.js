@@ -301,29 +301,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 });
 
 
-// Uptime Cron Ping
-app.all('/api/cron/ping', async (req, res) => {
-  console.log("Triggering uptime ping for Render backend...");
-  try {
-    const renderUrl = LLM_PRIMARY_URL; // Still ping the primary LLM to try and keep it warm
-    const response = await fetch(renderUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: "ping" }) 
-    });
-
-    const status = response.status;
-    res.status(200).json({ 
-      success: true, 
-      message: "Ping successful to primary LLM", 
-      backendStatus: status 
-    });
-  } catch (error) {
-    console.error("Failed to ping Render backend:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
+// Webhook endpoint, unrelated to cron jobs. Keeping.
 app.post("/api/webhook", (req, res) => {
   console.log("Webhook hit:", req.body);
   res.json({ ok: true });
