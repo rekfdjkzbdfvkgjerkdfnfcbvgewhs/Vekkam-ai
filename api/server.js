@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load environment variables
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
@@ -123,6 +124,13 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
  */
 async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
   console.log(`[${new Date().toISOString()}] Starting multimodal extraction for mimeType: ${mimeType}`);
+
+  // Fast path for simple text files to avoid API key requirement if not needed
+  if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+    console.log(`[${new Date().toISOString()}] Bypassing Gemini extraction for plain text file.`);
+    return buffer.toString('utf-8');
+  }
+
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set for multimodal extraction.");
   }
