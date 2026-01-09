@@ -4,6 +4,9 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 import { GoogleGenAI } from "@google/genai";
 import multer from 'multer';
+import pdf from 'pdf-parse/lib/pdf-parse.js'; // Import implementation directly to avoid some ESM issues
+import mammoth from 'mammoth';
+import Tesseract from 'tesseract.js';
 
 const app = express();
 app.use(cors());
@@ -120,52 +123,92 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 }
 
 /**
- * Helper to extract text from a file buffer using local code logic (Regex/Text processing).
+ * Helper to extract text from a file buffer using local code logic (Regex/Text processing) AND heavy libraries.
  * Replaces previous LLM-based extraction to remove dependency.
  */
-function _extractTextLocal(buffer, mimeType) {
+async function _extractTextLocal(buffer, mimeType) {
   console.log(`[${new Date().toISOString()}] Starting local extraction for mimeType: ${mimeType}`);
 
-  // 1. Strict Check for Text-based formats
-  // We cannot process Images, Audio, or PDFs with simple code extraction in this environment without heavy libraries.
-  if (!mimeType.startsWith('text/') && mimeType !== 'application/json' && !mimeType.includes('xml') && !mimeType.includes('javascript')) {
-    throw new Error(`Local extraction only supports text-based files (HTML, TXT, JSON, MD). Binary files like ${mimeType} require external tools which have been disabled.`);
+  try {
+    // 1. PDF Extraction
+    if (mimeType === 'application/pdf') {
+      console.log(`[${new Date().toISOString()}] Processing PDF...`);
+      const data = await pdf(buffer);
+      console.log(`[${new Date().toISOString()}] PDF extracted. Pages: ${data.numpages}, Info: ${JSON.stringify(data.info)}`);
+      return data.text;
+    }
+
+    // 2. Word Document (DOCX) Extraction
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      console.log(`[${new Date().toISOString()}] Processing DOCX...`);
+      const result = await mammoth.extractRawText({ buffer: buffer });
+      if (result.messages.length > 0) {
+        console.warn("Mammoth messages:", result.messages);
+      }
+      return result.value;
+    }
+
+    // 3. Image Extraction (OCR)
+    if (mimeType.startsWith('image/')) {
+      console.log(`[${new Date().toISOString()}] Processing Image with OCR (Tesseract)...`);
+      // Tesseract.recognize returns a promise. 
+      // Note: This can be slow on serverless functions.
+      const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
+        logger: m => console.log(m) // Optional: log progress
+      });
+      console.log(`[${new Date().toISOString()}] OCR Complete.`);
+      return text;
+    }
+
+    // 4. Fallback: Text/HTML/JSON Code-based extraction
+    // Strict Check for Text-based formats if not matched above
+    if (!mimeType.startsWith('text/') && mimeType !== 'application/json' && !mimeType.includes('xml') && !mimeType.includes('javascript')) {
+       // If it's audio or something else we can't handle locally
+       if (mimeType.startsWith('audio/')) {
+         throw new Error("Local audio transcription is not supported. Please upload text, PDF, or image transcripts.");
+       }
+       throw new Error(`Local extraction does not support ${mimeType}. Please upload PDF, DOCX, Image, or Text.`);
+    }
+
+    // 5. Convert Buffer to String for text-based processing
+    let text = buffer.toString('utf-8');
+
+    // 6. HTML Specific Cleaning (The 'designated' logic adapted for Node Regex)
+    if (mimeType.includes('html')) {
+      // Remove scripts and styles completely
+      text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, "");
+      text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gm, "");
+      
+      // Replace structural tags with newlines to preserve readability
+      text = text.replace(/<br\s*\/?>/gi, "\n");
+      text = text.replace(/<\/p>/gi, "\n\n");
+      text = text.replace(/<\/div>/gi, "\n");
+      text = text.replace(/<\/li>/gi, "\n");
+      text = text.replace(/<h[1-6]>/gi, "\n\n");
+      
+      // Strip all other HTML tags
+      text = text.replace(/<[^>]+>/g, "");
+      
+      // Decode common HTML entities
+      text = text.replace(/&nbsp;/g, " ");
+      text = text.replace(/&amp;/g, "&");
+      text = text.replace(/&lt;/g, "<");
+      text = text.replace(/&gt;/g, ">");
+      text = text.replace(/&quot;/g, '"');
+      text = text.replace(/&#39;/g, "'");
+    }
+
+    // 7. Clean up excessive whitespace
+    // Collapses multiple newlines into max 2, and trims
+    text = text.replace(/\n\s*\n/g, "\n\n").trim();
+    
+    console.log(`[${new Date().toISOString()}] Local extraction complete. Text length: ${text.length}`);
+    return text;
+
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] Extraction failed:`, err);
+    throw new Error(`Failed to extract content from ${mimeType}: ${err.message}`);
   }
-
-  // 2. Convert Buffer to String
-  let text = buffer.toString('utf-8');
-
-  // 3. HTML Specific Cleaning (The 'designated' logic adapted for Node Regex)
-  if (mimeType.includes('html')) {
-    // Remove scripts and styles completely
-    text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, "");
-    text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gm, "");
-    
-    // Replace structural tags with newlines to preserve readability
-    text = text.replace(/<br\s*\/?>/gi, "\n");
-    text = text.replace(/<\/p>/gi, "\n\n");
-    text = text.replace(/<\/div>/gi, "\n");
-    text = text.replace(/<\/li>/gi, "\n");
-    text = text.replace(/<h[1-6]>/gi, "\n\n");
-    
-    // Strip all other HTML tags
-    text = text.replace(/<[^>]+>/g, "");
-    
-    // Decode common HTML entities
-    text = text.replace(/&nbsp;/g, " ");
-    text = text.replace(/&amp;/g, "&");
-    text = text.replace(/&lt;/g, "<");
-    text = text.replace(/&gt;/g, ">");
-    text = text.replace(/&quot;/g, '"');
-    text = text.replace(/&#39;/g, "'");
-  }
-
-  // 4. Clean up excessive whitespace
-  // Collapses multiple newlines into max 2, and trims
-  text = text.replace(/\n\s*\n/g, "\n\n").trim();
-  
-  console.log(`[${new Date().toISOString()}] Local extraction complete. Text length: ${text.length}`);
-  return text;
 }
 
 /**
@@ -221,7 +264,7 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
   const { buffer, mimetype } = req.file;
 
   try {
-    const extractedText = _extractTextLocal(buffer, mimetype);
+    const extractedText = await _extractTextLocal(buffer, mimetype);
     res.status(200).json({ text: extractedText });
     console.log(`[${new Date().toISOString()}] /api/extract: Response sent successfully.`);
   } catch (error) {
@@ -247,7 +290,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     
     let extractedText = "";
     try {
-        extractedText = _extractTextLocal(buffer, mimetype);
+        extractedText = await _extractTextLocal(buffer, mimetype);
     } catch (extractError) {
          console.warn(`[${new Date().toISOString()}] Extraction failed: ${extractError.message}`);
          return res.status(400).json({ error: extractError.message });
