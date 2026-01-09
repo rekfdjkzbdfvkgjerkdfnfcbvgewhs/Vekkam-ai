@@ -10,7 +10,7 @@ import { MockTestGenerator } from './components/MockTestGenerator';
 // import MasteryEngine from './components/MasteryEngine'; // Removed
 import StudyGroups from './components/StudyGroups'; // New import
 import Achievements from './components/Achievements'; // New import
-import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge } from './types';
+import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge, ChatMessage } from './types';
 import { Loader2, Info } from 'lucide-react';
 import { 
   auth, 
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
+  const [sessionChatHistory, setSessionChatHistory] = useState<ChatMessage[]>([]); // New: Lifted chat state
   const [isFetchingContent, setIsFetchingContent] = useState(false);
 
   // LLM Fallback state - set to true to indicate temporary Gemini usage
@@ -94,8 +95,6 @@ const App: React.FC = () => {
           const unsubDoc = subscribeToUserData(firebaseUser.uid, (data) => {
              setUserData(data);
              setUserBadges(data.badges || []); // Update badges from snapshot
-             // No direct update to studyGroups from snapshot here as group details are in 'study_groups' collection
-             // but groupIds are updated here. If group data needs to be live, a separate listener is needed.
           });
 
           setLoading(false);
@@ -124,6 +123,7 @@ const App: React.FC = () => {
       setStudyGroups([]); // Clear groups
       setUserBadges([]); // Clear badges
       setActiveSessionNotes(undefined);
+      setSessionChatHistory([]);
       setActiveTool('notes');
     } catch (error) {
       console.error("Logout failed:", error);
@@ -148,6 +148,7 @@ const App: React.FC = () => {
       // Update local state with the new session, containing full notes initially for immediate display
       setSessions(prev => [newSession, ...prev]);
       setActiveSessionNotes(notes);
+      setSessionChatHistory([]); // Reset chat for new session
     } catch (err) {
       console.error("Failed to save session:", err);
     }
@@ -156,8 +157,10 @@ const App: React.FC = () => {
   const handleSessionSelect = async (id: string) => {
     if (!user) return;
 
+    // Reset chat when switching sessions (optional, or could fetch saved chat)
+    setSessionChatHistory([]);
+
     // First check if we already have the full notes in memory (optimization for just-saved session)
-    // Actually, sessions in state might only have metadata (empty content) if fetched from DB
     const session = sessions.find(s => s.id === id);
     if (!session) return;
     
@@ -191,6 +194,7 @@ const App: React.FC = () => {
       setSessions(prev => prev.filter(s => s.id !== id));
       if (activeSessionNotes && activeSessionNotes[0]?.topic === sessions.find(s => s.id === id)?.notes[0]?.topic) {
         setActiveSessionNotes(undefined);
+        setSessionChatHistory([]);
       }
     } catch (err) {
       console.error("Failed to delete session:", err);
@@ -268,17 +272,19 @@ const App: React.FC = () => {
               savedNotes={activeSessionNotes}
               userPicture={user.picture}
               userId={user.id}
+              chatHistory={sessionChatHistory}
+              onChatUpdate={setSessionChatHistory}
             />
           )}
           {activeTool === 'ta' && (
             <PersonalTA sessions={sessions} />
           )}
           {activeTool === 'mock' && (
-            <MockTestGenerator notes={activeSessionNotes} />
+            <MockTestGenerator 
+              notes={activeSessionNotes} 
+              chatHistory={sessionChatHistory} 
+            />
           )}
-          {/* {activeTool === 'mastery' && ( // Removed Skill Genome
-            <MasteryEngine chunks={allChunks} />
-          )} */}
           {activeTool === 'groups' && user && ( // Render StudyGroups component
             <StudyGroups 
               user={user} 

@@ -323,4 +323,11 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 
 app.post("/api/webhook", (req, res) => res.json({ ok: true }));
 
+// Vercel config to disable body parsing, allowing multer to handle uploads
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 export default app;

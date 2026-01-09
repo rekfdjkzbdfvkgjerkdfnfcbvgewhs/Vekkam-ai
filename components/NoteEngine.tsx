@@ -1,8 +1,8 @@
 
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy, ShieldAlert, XCircle, RefreshCw } from 'lucide-react';
-import { Chunk, NoteBlock, UserData, Badge, QuizQuestion } from '../types';
+import { Chunk, NoteBlock, UserData, Badge, QuizQuestion, ChatMessage } from '../types';
 import { localAnswerer, processSyllabusFile, generateBattleQuiz } from '../services/ai_engine';
 import { saveLearningFeedback, saveUserBadge } from '../services/firebase';
 import ReactMarkdown from 'react-markdown';
@@ -15,12 +15,8 @@ interface NoteEngineProps {
   savedNotes?: NoteBlock[];
   userPicture: string;
   userId: string;
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  feedbackGiven?: boolean;
+  chatHistory: ChatMessage[];
+  onChatUpdate: (messages: ChatMessage[]) => void;
 }
 
 const NoteEngine: React.FC<NoteEngineProps> = ({ 
@@ -30,7 +26,9 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   onSaveSession, 
   savedNotes,
   userPicture,
-  userId
+  userId,
+  chatHistory,
+  onChatUpdate
 }) => {
   const [step, setStep] = useState<'upload' | 'synthesizing' | 'results'>(savedNotes ? 'results' : 'upload');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -40,7 +38,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [finalNotes, setFinalNotes] = useState<NoteBlock[]>(savedNotes || []);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAnswering, setIsAnswering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +49,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [quizScore, setQuizScore] = useState(0);
 
   // If there are saved notes, initialize
-  React.useEffect(() => {
+  useEffect(() => {
     if (savedNotes && savedNotes.length > 0) {
       setFinalNotes(savedNotes);
       setOutline(savedNotes.map(n => ({ topic: n.topic, relevant_chunks: n.source_chunks || [] })));
@@ -77,21 +74,24 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       setFinalNotes(backendFinalNotes);
       onSaveSession(backendFinalNotes, fullText); 
 
-      // Award "Syllabus Survivor" badge
-      const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250);
-      const badge: Badge = {
-        id: `survivor_${Date.now()}`,
-        type: 'syllabus_survivor',
-        title: 'Syllabus Survivor',
-        description: `Conquered a ${pagesCleared} page syllabus in record time.`,
-        achievedAt: new Date().toISOString(),
-        metadata: {
-          pagesCleared: pagesCleared,
-          topic: backendFinalNotes[0]?.topic || "Unknown Topic",
-          aiAccuracy: "0 Hallucinations"
-        }
-      };
-      await saveUserBadge(userId, badge);
+      // Award "Syllabus Survivor" badge if not already earned
+      const hasBadge = userData.badges?.some(b => b.type === 'syllabus_survivor');
+      if (!hasBadge) {
+        const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250);
+        const badge: Badge = {
+          id: `survivor_${Date.now()}`,
+          type: 'syllabus_survivor',
+          title: 'Syllabus Survivor',
+          description: `Conquered a ${pagesCleared} page syllabus in record time.`,
+          achievedAt: new Date().toISOString(),
+          metadata: {
+            pagesCleared: pagesCleared,
+            topic: backendFinalNotes[0]?.topic || "Unknown Topic",
+            aiAccuracy: "0 Hallucinations"
+          }
+        };
+        await saveUserBadge(userId, badge);
+      }
 
       setStep('results'); 
     } catch (err: any) {
@@ -108,31 +108,33 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     if (!chatInput.trim() || isAnswering) return;
     const userMsg = chatInput;
     setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    const newMessages = [...chatHistory, { role: 'user', content: userMsg } as ChatMessage];
+    onChatUpdate(newMessages);
     setIsAnswering(true);
 
     try {
       const context = finalNotes.map(n => n.content).join('\n\n');
       const answer = await localAnswerer(userMsg, context);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: answer || "This isn't in the battle plan." }]);
+      onChatUpdate([...newMessages, { role: 'assistant', content: answer || "This isn't in the battle plan." }]);
     } catch (err) {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: "Strategy TA is temporarily offline." }]);
+      onChatUpdate([...newMessages, { role: 'assistant', content: "Strategy TA is temporarily offline." }]);
     } finally {
       setIsAnswering(false);
     }
   };
 
   const submitFeedback = async (messageIndex: number, satisfaction: number) => {
-    const msg = chatMessages[messageIndex];
-    const prevMsg = chatMessages[messageIndex - 1];
+    const msg = chatHistory[messageIndex];
+    const prevMsg = chatHistory[messageIndex - 1];
     
     if (msg.role !== 'assistant' || !prevMsg) return;
 
     await saveLearningFeedback(prevMsg.content, msg.content, satisfaction);
 
-    setChatMessages(prev => prev.map((m, i) => 
+    const updated = chatHistory.map((m, i) => 
       i === messageIndex ? { ...m, feedbackGiven: true } : m
-    ));
+    );
+    onChatUpdate(updated);
   };
 
   const handleUnlockNextBattle = async () => {
@@ -415,10 +417,10 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           <span className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Strategy TA</span>
         </div>
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4">
-          {chatMessages.length === 0 && (
+          {chatHistory.length === 0 && (
             <p className="text-center text-sm text-gray-400 dark:text-gray-600 pt-2 italic">Strategy TA: "Ask anything about this clearance module. I know exactly what matters."</p>
           )}
-          {chatMessages.map((m, i) => (
+          {chatHistory.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className="max-w-[70%] flex flex-col">
                 <div className={`p-3 rounded-xl text-sm ${

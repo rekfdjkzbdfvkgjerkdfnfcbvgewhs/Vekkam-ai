@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
-import { FileText, ClipboardList, Loader2, CheckCircle2, AlertTriangle, ArrowRight, BrainCircuit, ScanSearch, Microscope, Database } from 'lucide-react';
+import { FileText, ClipboardList, Loader2, CheckCircle2, AlertTriangle, ArrowRight, BrainCircuit, ScanSearch, Microscope, Database, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { NoteBlock } from '../types';
+import { NoteBlock, ChatMessage } from '../types';
 
 interface MockTestGeneratorProps {
   notes?: NoteBlock[];
+  chatHistory?: ChatMessage[];
 }
 
-export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes }) => {
+export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, chatHistory = [] }) => {
   const [syllabus, setSyllabus] = useState('');
   const [loading, setLoading] = useState(false);
   const [test, setTest] = useState<any>(null);
@@ -38,23 +39,24 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes }) =
     return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(e => e[0]);
   };
 
-  const runDiagnosticPipeline = async (sourceText: string) => {
+  const runDiagnosticPipeline = async (sourceText: string, chatContext: string) => {
     setStep('diagnosing');
-    
+    const combinedText = sourceText + "\n\n" + chatContext;
+
     // Stage 1: NLP Analysis
     setDiagnosticStage('NLP Scanning: Identifying Conceptual Density...');
     await new Promise(r => setTimeout(r, 800)); // Simulate processing
-    const keywords = getKeywords(sourceText);
+    const keywords = getKeywords(combinedText);
     
     // Stage 2: RAG Chunking
     setDiagnosticStage('RAG Pipeline: Vectorizing & Chunking Material...');
     await new Promise(r => setTimeout(r, 800));
     
-    // Heuristic: If text > 6000 chars, chunk and prioritize
-    let refinedContext = sourceText;
-    if (sourceText.length > 6000) {
+    // Heuristic: If text > 8000 chars, chunk and prioritize
+    let refinedContext = combinedText;
+    if (combinedText.length > 8000) {
       setDiagnosticStage('Optimization: Rate Limit Avoidance Protocol Active...');
-      const chunks = chunkString(sourceText, 1500);
+      const chunks = chunkString(combinedText, 1500);
       
       // Simple RAG simulation: Prioritize chunks with high keyword density + First/Last chunks
       const scoredChunks = chunks.map(chunk => {
@@ -67,8 +69,8 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes }) =
       
       scoredChunks.sort((a, b) => b.score - a.score);
       // Select top 3 relevant + first chunk (intro) + random for serendipity
-      const topChunks = scoredChunks.slice(0, 3).map(c => c.chunk);
-      if (chunks.length > 0) topChunks.unshift(chunks[0]); 
+      const topChunks = scoredChunks.slice(0, 4).map(c => c.chunk);
+      if (chunks.length > 0 && !topChunks.includes(chunks[0])) topChunks.unshift(chunks[0]); 
       
       refinedContext = topChunks.join('\n\n...[content skipped for optimization]...\n\n');
       await new Promise(r => setTimeout(r, 600));
@@ -84,18 +86,23 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes }) =
     setLoading(true);
 
     try {
-      let contextToUse = syllabus;
+      let notesContext = syllabus;
+      let chatsContext = "";
 
       if (useNotes && notes) {
         // Concatenate all notes
-        contextToUse = notes.map(n => `# ${n.topic}\n${n.content}`).join('\n\n');
+        notesContext = notes.map(n => `# ${n.topic}\n${n.content}`).join('\n\n');
+      }
+
+      if (chatHistory.length > 0) {
+        chatsContext = "Recent Strategy TA Chats:\n" + chatHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
       }
 
       // Run Pipeline
-      const optimizedContext = await runDiagnosticPipeline(contextToUse);
+      const optimizedContext = await runDiagnosticPipeline(notesContext, chatsContext);
       
-      const prompt = `Based on this optimized study material, generate a ruthless mock test.
-      Material: ${optimizedContext.slice(0, 8000)}
+      const prompt = `Based on this optimized study material and student doubts, generate a ruthless mock test.
+      Material: ${optimizedContext.slice(0, 10000)}
       
       REQUIREMENTS:
       1. 5 MCQs (Hard difficulty)
@@ -174,10 +181,15 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes }) =
                      <span className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400">
                        <ScanSearch size={14} /> AI Diagnostic Active
                      </span>
+                     {chatHistory.length > 0 && (
+                        <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                           <MessageSquare size={14} /> + Chats Included
+                        </span>
+                     )}
                    </div>
                    <h3 className="text-2xl font-black text-gray-900 dark:text-white">Generate from Battle Plan</h3>
                    <p className="text-gray-600 dark:text-gray-300 max-w-lg">
-                     Our pipeline will scan your {notes.length} unlocked battle units, identify high-yield clusters using NLP, and construct a targeted gauntlet.
+                     Our pipeline will scan your {notes.length} unlocked battle units {chatHistory.length > 0 ? `and ${chatHistory.length} chat interactions` : ''}, identify high-yield clusters using NLP, and construct a targeted gauntlet.
                    </p>
                    <button
                     onClick={() => handleGenerate(true)}

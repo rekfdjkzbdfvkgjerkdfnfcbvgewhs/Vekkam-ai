@@ -1,5 +1,4 @@
 
-
 export interface UserInfo {
   id: string;
   name: string;
@@ -81,4 +80,10 @@ export interface QuizQuestion {
   answer: string; // The correct option string
   taxonomy: 'Remembering' | 'Understanding' | 'Applying' | 'Analyzing' | 'Evaluating';
   explanation: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  feedbackGiven?: boolean;
 }
