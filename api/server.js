@@ -51,8 +51,8 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
     const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout for Llama
 
     const headers = { "Content-Type": "application/json" };
-    if (process.env.LLAMA_API) {
-      headers["Authorization"] = `Bearer ${process.env.LLAMA_API}`;
+    if (process.env.LLAMA_KEY) {
+      headers["Authorization"] = `Bearer ${process.env.LLAMA_KEY}`;
     }
 
     const r = await fetch(LLM_PRIMARY_URL, {
@@ -84,15 +84,15 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 /**
  * Tries the requested Gemini 2.5 model, falls back to Gemini 3 Flash Preview if 2.5 fails.
  * strictly avoids prohibited 1.5 series models.
- * Uses GEMINI_API environment variable.
+ * Uses GEMINI_KEY environment variable.
  */
 async function callGeminiWithFallback(contents, systemInstruction) {
-  if (!process.env.GEMINI_API) {
-    throw new Error("GEMINI_API environment variable is missing. Cannot fallback to Gemini.");
+  if (!process.env.GEMINI_KEY) {
+    throw new Error("GEMINI_KEY environment variable is missing. Cannot fallback to Gemini.");
   }
   
-  // Initialize client with the specific GEMINI_API key
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API });
+  // Initialize client with the specific GEMINI_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
 
   // Attempt 1: Gemini 2.5 Flash Preview (As requested)
   try {
