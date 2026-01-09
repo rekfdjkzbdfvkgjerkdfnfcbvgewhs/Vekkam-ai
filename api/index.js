@@ -11,10 +11,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Keep for non-file JSON requests
 
 // GoogleGenAI instance for multimodal extraction (using default API_KEY, typically for Gemini)
+// These instances are created here, but their API key presence will be validated before use in functions.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-// GoogleGenAI instance for text generation fallback 1 (using GEMINI_KEY)
 const geminiFallbackAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
-// GoogleGenAI instance for text generation fallback 2 (using LLAMA_KEY)
 const llamaFallbackAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY });
 
 
@@ -43,9 +42,14 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
   let responseText = '';
 
+  console.log(`[${new Date().toISOString()}] Attempting text generation with prompt length: ${fullPrompt.length}`);
+
   // Attempt 1: Forced Gemini Fallback (if env var is true)
   if (USE_GEMINI_FALLBACK_FORCE) {
-    console.log("Attempting text generation with Forced Gemini Fallback (USE_GEMINI_FALLBACK_FORCE is true).");
+    console.log(`[${new Date().toISOString()}] Attempting text generation with Forced Gemini Fallback (USE_GEMINI_FALLBACK_FORCE is true).`);
+    if (!process.env.GEMINI_KEY) {
+      throw new Error("GEMINI_KEY environment variable is not set for forced fallback.");
+    }
     try {
       const response = await geminiFallbackAI.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -54,15 +58,15 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
       });
       responseText = response.text;
       if (responseText) {
-        console.log("Text generation successful with Forced Gemini Fallback.");
+        console.log(`[${new Date().toISOString()}] Text generation successful with Forced Gemini Fallback.`);
         return responseText;
       }
     } catch (geminiError) {
-      console.warn("Forced Gemini Fallback failed:", geminiError.message);
+      console.warn(`[${new Date().toISOString()}] Forced Gemini Fallback failed:`, geminiError.message);
     }
   } else {
     // Attempt 1: Primary LLM
-    console.log("Attempting text generation with Primary LLM (Render).");
+    console.log(`[${new Date().toISOString()}] Attempting text generation with Primary LLM (Render).`);
     try {
       const r = await fetch(
         LLM_PRIMARY_URL,
@@ -77,50 +81,57 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
         const data = await r.json();
         responseText = data.text || data.response || data.generated_text || "";
         if (responseText) {
-          console.log("Text generation successful with Primary LLM (Render).");
+          console.log(`[${new Date().toISOString()}] Text generation successful with Primary LLM (Render).`);
           return responseText;
         }
       }
       const errorText = await r.text();
-      console.warn(`Primary LLM (${LLM_PRIMARY_URL}) failed with status ${r.status}: ${errorText}.`);
+      console.warn(`[${new Date().toISOString()}] Primary LLM (${LLM_PRIMARY_URL}) failed with status ${r.status}: ${errorText}.`);
     } catch (error) {
-      console.warn(`Primary LLM (${LLM_PRIMARY_URL}) fetch failed: ${error.message}.`);
+      console.warn(`[${new Date().toISOString()}] Primary LLM (${LLM_PRIMARY_URL}) fetch failed: ${error.message}.`);
     }
   }
 
   // Attempt 2: Gemini Fallback
-  console.log("Attempting text generation with Gemini Fallback.");
-  try {
-    const response = await geminiFallbackAI.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: fullPrompt,
-      config: { systemInstruction: systemInstruction }
-    });
-    responseText = response.text;
-    if (responseText) {
-      console.log("Text generation successful with Gemini Fallback.");
-      return responseText;
+  console.log(`[${new Date().toISOString()}] Attempting text generation with Gemini Fallback.`);
+  if (!process.env.GEMINI_KEY) {
+    console.warn(`[${new Date().toISOString()}] GEMINI_KEY environment variable is not set. Skipping Gemini fallback.`);
+  } else {
+    try {
+      const response = await geminiFallbackAI.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: fullPrompt,
+        config: { systemInstruction: systemInstruction }
+      });
+      responseText = response.text;
+      if (responseText) {
+        console.log(`[${new Date().toISOString()}] Text generation successful with Gemini Fallback.`);
+        return responseText;
+      }
+    } catch (geminiError) {
+      console.warn(`[${new Date().toISOString()}] Gemini Fallback failed:`, geminiError.message);
     }
-  } catch (geminiError) {
-    console.warn("Gemini Fallback failed:", geminiError.message);
   }
 
   // Attempt 3: Llama Fallback
-  console.log("Attempting text generation with Llama Fallback.");
-  try {
-    const response = await llamaFallbackAI.models.generateContent({
-      model: 'gemini-3-flash-preview', // Assuming LLAMA_KEY points to another Gemini endpoint
-      contents: fullPrompt,
-      config: { systemInstruction: systemInstruction }
-    });
-    responseText = response.text;
-    if (responseText) {
-      console.log("Text generation successful with Llama Fallback.");
-      return responseText;
+  console.log(`[${new Date().toISOString()}] Attempting text generation with Llama Fallback.`);
+  if (!process.env.LLAMA_KEY) {
+    console.warn(`[${new Date().toISOString()}] LLAMA_KEY environment variable is not set. Skipping Llama fallback.`);
+  } else {
+    try {
+      const response = await llamaFallbackAI.models.generateContent({
+        model: 'gemini-3-flash-preview', // Assuming LLAMA_KEY points to another Gemini endpoint
+        contents: fullPrompt,
+        config: { systemInstruction: systemInstruction }
+      });
+      responseText = response.text;
+      if (responseText) {
+        console.log(`[${new Date().toISOString()}] Text generation successful with Llama Fallback.`);
+        return responseText;
+      }
+    } catch (llamaError) {
+      console.warn(`[${new Date().toISOString()}] Llama Fallback failed:`, llamaError.message);
     }
-  } catch (llamaError) {
-    console.error("All LLM fallbacks failed:", llamaError.message);
-    throw new Error("All LLM fallbacks failed: " + llamaError.message);
   }
   // If we reach here, no LLM provided a valid response
   throw new Error("No LLM provided a valid response after all fallbacks.");
@@ -130,6 +141,11 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
  * Helper to extract text from a file buffer using Google Gemini API (multimodal).
  */
 async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
+  console.log(`[${new Date().toISOString()}] Starting multimodal extraction for mimeType: ${mimeType}`);
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set for multimodal extraction.");
+  }
+
   const base64Data = buffer.toString('base64');
   const isAudio = mimeType.startsWith('audio/');
   const modelName = isAudio
@@ -157,12 +173,13 @@ async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
 
     const text = response.text || "";
     if (!text && response.candidates?.[0]?.finishReason === 'SAFETY') {
+      console.warn(`[${new Date().toISOString()}] Multimodal extraction flagged for safety.`);
       throw new Error("Content flagged for safety by AI. Please upload academic material.");
     }
-    console.log("Gemini used for multimodal extraction.");
+    console.log(`[${new Date().toISOString()}] Gemini used for multimodal extraction. Text length: ${text.length}`);
     return text;
   } catch (error) {
-    console.error("Gemini Extraction Error:", error);
+    console.error(`[${new Date().toISOString()}] Gemini Extraction Error:`, error);
     throw new Error("Failed to process exam material during extraction: " + (error.message || "Unknown API error"));
   }
 }
@@ -185,26 +202,35 @@ function chunkText(text, maxChars = 1200) {
     }
   }
   if (currentChunk) chunks.push(currentChunk.trim());
+  console.log(`[${new Date().toISOString()}] Text chunked into ${chunks.length} parts.`);
   return chunks;
 }
 
 
 // Proxy for Qwen Generation (text-to-text only) - now uses callLLM with fallback
 app.post('/api/generate', async (req, res) => {
+  console.log(`[${new Date().toISOString()}] /api/generate endpoint hit.`);
   const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+  if (!prompt) {
+    console.warn(`[${new Date().toISOString()}] /api/generate: Prompt is required.`);
+    return res.status(400).json({ error: "Prompt is required" });
+  }
 
   try {
     const responseText = await callLLM(prompt);
     res.status(200).json({ text: responseText });
+    console.log(`[${new Date().toISOString()}] /api/generate: Response sent successfully.`);
   } catch (error) {
+    console.error(`[${new Date().toISOString()}] /api/generate: Error during LLM call:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Endpoint for Multimodal Text Extraction via Gemini (receives raw file)
 app.post('/api/extract', upload.single('file'), async (req, res) => {
+  console.log(`[${new Date().toISOString()}] /api/extract endpoint hit.`);
   if (!req.file) {
+    console.warn(`[${new Date().toISOString()}] /api/extract: No file uploaded.`);
     return res.status(400).json({ error: "No file uploaded" });
   }
 
@@ -214,14 +240,18 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
   try {
     const extractedText = await _extractTextFromGemini(buffer, mimetype, prompt);
     res.status(200).json({ text: extractedText });
+    console.log(`[${new Date().toISOString()}] /api/extract: Response sent successfully.`);
   } catch (error) {
+    console.error(`[${new Date().toISOString()}] /api/extract: Error during extraction:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 // NEW: Endpoint for full syllabus processing (extraction + chunking + LLM inference + merging)
 app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
+  console.log(`[${new Date().toISOString()}] /api/process-syllabus endpoint hit.`);
   if (!req.file) {
+    console.warn(`[${new Date().toISOString()}] /api/process-syllabus: No file uploaded.`);
     return res.status(400).json({ error: "No file uploaded" });
   }
 
@@ -230,6 +260,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 
   try {
     // 1. Extract Text
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 1 - Extracting text from ${originalname} (${mimetype}).`);
     const extractedText = await _extractTextFromGemini(
       buffer,
       mimetype,
@@ -238,16 +269,20 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
         : "Extract all text from this material. Maintain structure and hierarchy. Output only the content."
     );
     if (!extractedText) {
+      console.warn(`[${new Date().toISOString()}] /api/process-syllabus: No text extracted.`);
       return res.status(400).json({ error: "Could not extract any meaningful text from the file." });
     }
 
     // 2. Chunk Text
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 2 - Chunking extracted text.`);
     const chunks = chunkText(extractedText);
     if (chunks.length === 0) {
+      console.warn(`[${new Date().toISOString()}] /api/process-syllabus: Extracted text too short for chunks.`);
       return res.status(400).json({ error: "Extracted text was too short to create meaningful battle units." });
     }
 
     // 3. Process Chunks via Inference Backend
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 3 - Processing ${chunks.length} chunks.`);
     const chunkResponses = [];
     for (const chunk of chunks) {
       const promptForChunk = `Based on the following study material, identify key concepts, definitions, and important facts. Prioritize information relevant for an "exam. Return the raw high-yield information.
@@ -255,8 +290,10 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
       const response = await callLLM(promptForChunk); // Use callLLM for fallback
       chunkResponses.push(response);
     }
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Finished processing chunks.`);
 
     // 4. Merge Outputs (Second Pass Synthesis)
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 4 - Merging and synthesizing content.`);
     const mergedContent = chunkResponses.join('\n\n');
     const finalSynthesisPrompt = `Synthesize the following high-yield study points into a comprehensive, exam-focused document. 
     Format ruthlessly for fast reading: markdown, bold terms, bullet points, numbered lists where appropriate. 
@@ -266,26 +303,30 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     Synthesize this:
     ${mergedContent}`;
     const finalSynthesizedText = await callLLM(finalSynthesisPrompt); // Use callLLM for fallback
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Final synthesis complete. Text length: ${finalSynthesizedText.length}`);
 
     // 5. Generate Outline
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 5 - Generating outline.`);
     const outlinePrompt = `Divide the following synthesized material into exactly 5 ruthless battle units for the exam. 
     Cut the fluff. Prioritize high-yield topics.
     IMPORTANT: Return ONLY a valid JSON object. 
     Format: {"outline": [{"topic": "Name", "relevant_chunks": []}]} (relevant_chunks can be empty as this is post-synthesis)
     
-    Material: ${finalSynthesizedText.substring(0, 2000)}... (truncated for outline generation to save tokens)`; // Limit input for outline generation
+    Material: ${finalSynthesizedText.substring(0, Math.min(finalSynthesizedText.length, 2000))}...`; // Limit input for outline generation
     const outlineResultRaw = await callLLM(outlinePrompt); // Use callLLM for fallback
     let outline = [];
     try {
       const cleanJson = outlineResultRaw.replace(/```json|```/g, '').trim();
       outline = JSON.parse(cleanJson).outline;
+      console.log(`[${new Date().toISOString()}] /api/process-syllabus: Outline generated successfully.`);
     } catch (parseError) {
-      console.error("Failed to parse outline JSON:", outlineResultRaw, parseError);
+      console.error(`[${new Date().toISOString()}] /api/process-syllabus: Failed to parse outline JSON:`, outlineResultRaw, parseError);
       // Fallback to a simple outline if parsing fails
       outline = ["Exam Overview", "Core High-Yield Concepts", "Critical Reasoning", "Application Patterns", "Final Clearance"].map(topic => ({ topic, relevant_chunks: [] }));
     }
 
     // 6. Generate NoteBlocks (re-using finalSynthesizedText and outline)
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 6 - Generating final note blocks.`);
     const finalNotes = outline.map(o => ({
       topic: o.topic,
       content: finalSynthesizedText, // For simplicity, current implementation uses entire synthesized text for all notes
@@ -293,9 +334,10 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     }));
 
     res.status(200).json({ outline: outline, finalNotes: finalNotes, fullText: finalSynthesizedText });
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Full syllabus processed and response sent.`);
 
   } catch (error) {
-    console.error("Syllabus Processing Error:", error);
+    console.error(`[${new Date().toISOString()}] /api/process-syllabus: Overall Syllabus Processing Error:`, error);
     res.status(500).json({ error: "Failed to process syllabus: " + (error.message || "Unknown error") });
   }
 });
@@ -303,7 +345,7 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 
 // Webhook endpoint, unrelated to cron jobs. Keeping.
 app.post("/api/webhook", (req, res) => {
-  console.log("Webhook hit:", req.body);
+  console.log(`[${new Date().toISOString()}] Webhook hit:`, req.body);
   res.json({ ok: true });
 });
 

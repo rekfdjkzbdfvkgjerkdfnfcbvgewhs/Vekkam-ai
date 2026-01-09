@@ -1,3 +1,4 @@
+
 import { Chunk, NoteBlock } from "../types";
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
@@ -42,8 +43,20 @@ export const processSyllabusFile = async (file: File, instructions: string): Pro
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to process syllabus on server.");
+    let errorMessage = "Failed to process syllabus on server.";
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch (e) {
+      // If response.json() fails, try to get raw text
+      try {
+        const rawText = await response.text();
+        errorMessage = `Server responded with non-JSON: ${rawText.substring(0, 200)}... (Status: ${response.status})`; // Truncate long responses
+      } catch (textError) {
+        errorMessage = `Server responded with unknown error (Status: ${response.status})`;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   const result = await response.json();
