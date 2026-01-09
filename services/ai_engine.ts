@@ -65,13 +65,14 @@ export const processSyllabusFile = async (file: File, instructions: string): Pro
 
 
 // The following functions remain for other parts of the app (e.g., PersonalTA, MockTestGenerator)
-// or for local-only .txt file extraction if still desired (though primary processing uses backend)
+// or for local-only file extraction if still desired.
 
 /**
- * Extracts text content from plain text files locally.
- * For other file types, it's expected that processSyllabusFile handles it via the backend.
+ * Extracts text content from plain text or HTML files locally.
+ * Uses a temporary DOM element to efficiently strip HTML tags via .textContent.
  */
 export const extractTextFromFile = async (file: File): Promise<string> => {
+  // Plain Text
   if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -80,6 +81,43 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
       reader.readAsText(file);
     });
   }
+
+  // HTML / Web Page - Efficient DOM-based extraction
+  if (file.type === 'text/html' || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const htmlContent = e.target?.result as string;
+          
+          // Create a temporary DOM element
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = htmlContent;
+
+          // Remove script and style elements to avoid extracting code
+          const scripts = tempDiv.getElementsByTagName('script');
+          const styles = tempDiv.getElementsByTagName('style');
+          
+          // Remove in reverse order to keep collection live
+          for (let i = scripts.length - 1; i >= 0; i--) {
+            scripts[i].parentNode?.removeChild(scripts[i]);
+          }
+          for (let i = styles.length - 1; i >= 0; i--) {
+            styles[i].parentNode?.removeChild(styles[i]);
+          }
+
+          // Retrieve text content (efficiently strips tags)
+          const cleanText = tempDiv.textContent || tempDiv.innerText || "";
+          resolve(cleanText.trim());
+        } catch (error) {
+          reject(new Error("Failed to parse HTML content."));
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read HTML file."));
+      reader.readAsText(file);
+    });
+  }
+
   // For other types, this function is no longer the primary path for full processing.
   // It would require a specific backend endpoint if simple text extraction for non-txt is needed *without* full processing.
   // For now, we assume `processSyllabusFile` is the main entry for complex files.
