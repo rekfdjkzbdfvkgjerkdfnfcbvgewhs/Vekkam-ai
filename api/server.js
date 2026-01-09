@@ -37,7 +37,7 @@ const upload = multer({
 });
 
 /**
- * Utility to call the primary LLM (Qwen on Render) or fallback to Gemini.
+ * Utility to call the primary LLM (Llama on Render) or fallback to Gemini.
  */
 async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
@@ -55,7 +55,7 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
       // Instantiate Gemini client here
       const geminiAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await geminiAI.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash-preview',
         contents: fullPrompt,
         config: { systemInstruction: systemInstruction }
       });
@@ -68,15 +68,18 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
       console.warn(`[${new Date().toISOString()}] Forced Gemini Fallback failed:`, geminiError.message);
     }
   } else {
-    // Attempt 1: Primary LLM
-    console.log(`[${new Date().toISOString()}] Attempting text generation with Primary LLM (Render).`);
+    // Attempt 1: Primary LLM (Llama API)
+    console.log(`[${new Date().toISOString()}] Attempting text generation with Primary LLM (Llama API).`);
     try {
       const r = await fetch(
         LLM_PRIMARY_URL,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: fullPrompt })
+          body: JSON.stringify({ 
+            prompt: fullPrompt,
+            model: "llama-3.3-70b-instruct"
+          })
         }
       );
 
@@ -84,7 +87,7 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
         const data = await r.json();
         responseText = data.text || data.response || data.generated_text || "";
         if (responseText) {
-          console.log(`[${new Date().toISOString()}] Text generation successful with Primary LLM (Render).`);
+          console.log(`[${new Date().toISOString()}] Text generation successful with Primary LLM.`);
           return responseText;
         }
       }
@@ -104,7 +107,7 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
       // Instantiate Gemini client here
       const geminiAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await geminiAI.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash-preview',
         contents: fullPrompt,
         config: { systemInstruction: systemInstruction }
       });
@@ -234,7 +237,7 @@ function chunkText(text, maxChars = 1200) {
 }
 
 
-// Proxy for Qwen Generation (text-to-text only) - now uses callLLM with fallback
+// Proxy for Generation (text-to-text only) - now uses callLLM with fallback
 app.post('/api/generate', async (req, res) => {
   console.log(`[${new Date().toISOString()}] /api/generate endpoint hit.`);
   const { prompt } = req.body;
