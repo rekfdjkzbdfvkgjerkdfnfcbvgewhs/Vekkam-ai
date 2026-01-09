@@ -120,59 +120,52 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 }
 
 /**
- * Helper to extract text from a file buffer using Google Gemini API (multimodal).
+ * Helper to extract text from a file buffer using local code logic (Regex/Text processing).
+ * Replaces previous LLM-based extraction to remove dependency.
  */
-async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
-  console.log(`[${new Date().toISOString()}] Starting multimodal extraction for mimeType: ${mimeType}`);
+function _extractTextLocal(buffer, mimeType) {
+  console.log(`[${new Date().toISOString()}] Starting local extraction for mimeType: ${mimeType}`);
 
-  // Fast path for simple text files to avoid API key requirement if not needed
-  if (mimeType.startsWith('text/') || mimeType === 'application/json') {
-    console.log(`[${new Date().toISOString()}] Bypassing Gemini extraction for plain text file.`);
-    return buffer.toString('utf-8');
+  // 1. Strict Check for Text-based formats
+  // We cannot process Images, Audio, or PDFs with simple code extraction in this environment without heavy libraries.
+  if (!mimeType.startsWith('text/') && mimeType !== 'application/json' && !mimeType.includes('xml') && !mimeType.includes('javascript')) {
+    throw new Error(`Local extraction only supports text-based files (HTML, TXT, JSON, MD). Binary files like ${mimeType} require external tools which have been disabled.`);
   }
 
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set for multimodal extraction.");
+  // 2. Convert Buffer to String
+  let text = buffer.toString('utf-8');
+
+  // 3. HTML Specific Cleaning (The 'designated' logic adapted for Node Regex)
+  if (mimeType.includes('html')) {
+    // Remove scripts and styles completely
+    text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, "");
+    text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gm, "");
+    
+    // Replace structural tags with newlines to preserve readability
+    text = text.replace(/<br\s*\/?>/gi, "\n");
+    text = text.replace(/<\/p>/gi, "\n\n");
+    text = text.replace(/<\/div>/gi, "\n");
+    text = text.replace(/<\/li>/gi, "\n");
+    text = text.replace(/<h[1-6]>/gi, "\n\n");
+    
+    // Strip all other HTML tags
+    text = text.replace(/<[^>]+>/g, "");
+    
+    // Decode common HTML entities
+    text = text.replace(/&nbsp;/g, " ");
+    text = text.replace(/&amp;/g, "&");
+    text = text.replace(/&lt;/g, "<");
+    text = text.replace(/&gt;/g, ">");
+    text = text.replace(/&quot;/g, '"');
+    text = text.replace(/&#39;/g, "'");
   }
 
-  // Instantiate multimodal AI client here
-  const multimodalAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const base64Data = buffer.toString('base64');
-  const isAudio = mimeType.startsWith('audio/');
-  const modelName = isAudio
-    ? 'gemini-2.5-flash-native-audio-preview-12-2025'
-    : 'gemini-3-flash-preview'; // For image/PDF extraction
-
-  try {
-    const response = await multimodalAI.models.generateContent({
-      model: modelName,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType
-            }
-          },
-          { text: instructionPrompt || "Extract all text. Maintain hierarchy. Output only the content." }
-        ]
-      },
-      config: {
-        systemInstruction: RUTHLESS_SYSTEM_PROMPT
-      }
-    });
-
-    const text = response.text || "";
-    if (!text && response.candidates?.[0]?.finishReason === 'SAFETY') {
-      console.warn(`[${new Date().toISOString()}] Multimodal extraction flagged for safety.`);
-      throw new Error("Content flagged for safety by AI. Please upload academic material.");
-    }
-    console.log(`[${new Date().toISOString()}] Gemini used for multimodal extraction. Text length: ${text.length}`);
-    return text;
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] Gemini Extraction Error:`, error);
-    throw new Error("Failed to process exam material during extraction: " + (error.message || "Unknown API error"));
-  }
+  // 4. Clean up excessive whitespace
+  // Collapses multiple newlines into max 2, and trims
+  text = text.replace(/\n\s*\n/g, "\n\n").trim();
+  
+  console.log(`[${new Date().toISOString()}] Local extraction complete. Text length: ${text.length}`);
+  return text;
 }
 
 /**
@@ -217,7 +210,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-// Endpoint for Multimodal Text Extraction via Gemini (receives raw file)
+// Endpoint for Local Text Extraction (receives raw file)
 app.post('/api/extract', upload.single('file'), async (req, res) => {
   console.log(`[${new Date().toISOString()}] /api/extract endpoint hit.`);
   if (!req.file) {
@@ -226,10 +219,9 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
   }
 
   const { buffer, mimetype } = req.file;
-  const { prompt } = req.body; // Optional prompt from frontend
 
   try {
-    const extractedText = await _extractTextFromGemini(buffer, mimetype, prompt);
+    const extractedText = _extractTextLocal(buffer, mimetype);
     res.status(200).json({ text: extractedText });
     console.log(`[${new Date().toISOString()}] /api/extract: Response sent successfully.`);
   } catch (error) {
@@ -250,15 +242,17 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
   const { instructions } = req.body; // Additional instructions for synthesis
 
   try {
-    // 1. Extract Text
-    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 1 - Extracting text from ${originalname} (${mimetype}).`);
-    const extractedText = await _extractTextFromGemini(
-      buffer,
-      mimetype,
-      mimetype.startsWith('audio/')
-        ? "Provide a verbatim transcription. No summaries. Pure text. Output only the content."
-        : "Extract all text from this material. Maintain structure and hierarchy. Output only the content."
-    );
+    // 1. Extract Text Locally
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 1 - Extracting text locally from ${originalname} (${mimetype}).`);
+    
+    let extractedText = "";
+    try {
+        extractedText = _extractTextLocal(buffer, mimetype);
+    } catch (extractError) {
+         console.warn(`[${new Date().toISOString()}] Extraction failed: ${extractError.message}`);
+         return res.status(400).json({ error: extractError.message });
+    }
+
     if (!extractedText) {
       console.warn(`[${new Date().toISOString()}] /api/process-syllabus: No text extracted.`);
       return res.status(400).json({ error: "Could not extract any meaningful text from the file." });
