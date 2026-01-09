@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, PlusCircle, LogIn, Send, MessageSquare, Copy, Check, Hash, Loader2 } from 'lucide-react';
+import { Users, PlusCircle, LogIn, Send, MessageSquare, Copy, Check, Hash, Loader2, Paperclip, FileText, Download } from 'lucide-react';
 import { UserInfo, StudyGroup, GroupMessage } from '../types';
 import { createStudyGroup, joinStudyGroup, getStudyGroupsForUser, sendGroupMessage, getGroupMessagesStream } from '../services/firebase';
 
@@ -19,6 +19,10 @@ const StudyGroups: React.FC<StudyGroupsProps> = ({ user, userStudyGroups, setUse
   const [chatInput, setChatInput] = useState('');
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -39,6 +43,34 @@ const StudyGroups: React.FC<StudyGroupsProps> = ({ user, userStudyGroups, setUse
     // Scroll to bottom of messages
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [groupMessages]);
+
+  const handleMediaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Limit file size to 5MB for direct base64 embedding in Firestore documents
+      if (file.size > 5 * 1024 * 1024) { 
+        setError("Media file too large. Max 5MB allowed for direct embedding.");
+        setSelectedMediaFile(null);
+        setMediaPreviewUrl(null);
+        e.target.value = ''; // Clear file input
+        return;
+      }
+      setSelectedMediaFile(file);
+      setMediaPreviewUrl(URL.createObjectURL(file));
+      setError(null);
+    }
+  };
+
+  const handleClearMedia = () => {
+    setSelectedMediaFile(null);
+    if (mediaPreviewUrl) {
+      URL.revokeObjectURL(mediaPreviewUrl);
+    }
+    setMediaPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
@@ -83,19 +115,60 @@ const StudyGroups: React.FC<StudyGroupsProps> = ({ user, userStudyGroups, setUse
   };
 
   const handleSendMessage = async () => {
-    if (!chatInput.trim() || !selectedGroup) return;
+    if ((!chatInput.trim() && !selectedMediaFile) || !selectedGroup || loading) return;
+
+    setLoading(true);
+    setError(null);
+
     try {
-      const message: Omit<GroupMessage, 'id'> = {
+      let messageToSend: Omit<GroupMessage, 'id'> = {
         senderId: user.id,
         senderName: user.name,
         content: chatInput,
-        timestamp: new Date().toISOString(), // Temporary client-side timestamp
+        timestamp: new Date().toISOString(),
       };
-      await sendGroupMessage(selectedGroup.id, message);
-      setChatInput('');
-    } catch (err) {
+
+      if (selectedMediaFile) {
+        messageToSend.content = chatInput || ""; // Use chatInput as caption or empty string
+        const reader = new FileReader();
+        
+        const fileReadPromise = new Promise<void>((resolve, reject) => {
+          reader.onloadend = async () => {
+            if (typeof reader.result === 'string') {
+              messageToSend.mediaDataUrl = reader.result;
+              messageToSend.mediaMimeType = selectedMediaFile.type;
+              try {
+                await sendGroupMessage(selectedGroup.id, messageToSend);
+                setChatInput('');
+                handleClearMedia();
+                resolve();
+              } catch (error) {
+                console.error("Error sending message with media:", error);
+                setError("Failed to send media message.");
+                reject(error);
+              }
+            } else {
+              reject(new Error("FileReader did not return a string result."));
+            }
+          };
+          reader.onerror = (error) => {
+            console.error("Error reading file:", error);
+            setError("Failed to read media file.");
+            reject(error);
+          };
+          reader.readAsDataURL(selectedMediaFile);
+        });
+        await fileReadPromise; // Wait for file reading and message sending
+      } else {
+        // Original logic for text-only messages
+        await sendGroupMessage(selectedGroup.id, messageToSend);
+        setChatInput('');
+      }
+    } catch (err: any) {
       console.error("Error sending message:", err);
-      setError("Failed to send message.");
+      setError(err.message || "Failed to send message.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -219,13 +292,54 @@ const StudyGroups: React.FC<StudyGroupsProps> = ({ user, userStudyGroups, setUse
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {msg.senderId === user.id ? 'You' : msg.senderName} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
-                  <div className={`p-3 rounded-xl shadow-sm text-sm ${
-                    msg.senderId === user.id
-                      ? 'bg-blue-600 text-white rounded-br-none'
-                      : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-tl-none'
-                  }`}>
-                    {msg.content}
-                  </div>
+                  {msg.mediaDataUrl && msg.mediaMimeType && (
+                      <div className="mb-2 max-w-full flex flex-col items-center">
+                          {msg.mediaMimeType.startsWith('image/') && (
+                              <img 
+                                  src={msg.mediaDataUrl} 
+                                  alt="Shared media" 
+                                  className="max-w-full h-auto rounded-lg object-contain cursor-pointer" 
+                                  onClick={() => window.open(msg.mediaDataUrl, '_blank')} // Open in new tab for full view/download
+                              />
+                          )}
+                          {msg.mediaMimeType.startsWith('video/') && (
+                              <video 
+                                  src={msg.mediaDataUrl} 
+                                  controls 
+                                  className="max-w-full h-auto rounded-lg object-contain" 
+                              />
+                          )}
+                          {msg.mediaMimeType.startsWith('audio/') && (
+                              <audio 
+                                  src={msg.mediaDataUrl} 
+                                  controls 
+                                  className="w-full rounded-lg" 
+                              />
+                          )}
+                          <button
+                              onClick={() => {
+                                  const link = document.createElement('a');
+                                  link.href = msg.mediaDataUrl as string;
+                                  link.download = `shared_media_${msg.id}.${msg.mediaMimeType?.split('/')[1] || 'file'}`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                              }}
+                              className="mt-1 px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center gap-1"
+                          >
+                              <Download size={12} /> Download
+                          </button>
+                      </div>
+                  )}
+                  {msg.content.trim() !== "" && (
+                      <div className={`p-3 rounded-xl shadow-sm text-sm ${
+                        msg.senderId === user.id
+                          ? 'bg-blue-600 text-white rounded-br-none'
+                          : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-tl-none'
+                      }`}>
+                        {msg.content}
+                      </div>
+                  )}
                 </div>
               </div>
             ))
@@ -233,19 +347,56 @@ const StudyGroups: React.FC<StudyGroupsProps> = ({ user, userStudyGroups, setUse
           <div ref={messagesEndRef} />
         </div>
         <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+          {selectedMediaFile && mediaPreviewUrl && (
+              <div className="mb-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg flex flex-col items-center">
+                  {selectedMediaFile.type.startsWith('image/') ? (
+                      <img src={mediaPreviewUrl} alt="Media preview" className="max-h-32 rounded-md object-contain mb-2" />
+                  ) : selectedMediaFile.type.startsWith('video/') ? (
+                      <video src={mediaPreviewUrl} controls className="max-h-32 rounded-md object-contain mb-2" />
+                  ) : selectedMediaFile.type.startsWith('audio/') ? (
+                      <audio src={mediaPreviewUrl} controls className="w-full mb-2" />
+                  ) : (
+                      <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                          <FileText size={20} />
+                          <span>{selectedMediaFile.name}</span>
+                      </div>
+                  )}
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                      ⚠️ This media is embedded directly in the message and is NOT separately hosted. It may make the message large and load slowly. Please download it if you wish to keep it.
+                  </p>
+                  <button onClick={handleClearMedia} className="text-sm text-red-500 hover:underline">
+                      Clear Media
+                  </button>
+              </div>
+          )}
           <div className="relative">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleMediaFileSelect}
+                className="hidden"
+                accept="image/*,video/*,audio/*" // Accept common media types
+            />
+            <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute left-2 top-2 p-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                title="Attach media"
+                disabled={loading || !!selectedMediaFile} // Disable if already loading or a file is selected
+            >
+                <Paperclip size={18} />
+            </button>
             <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder={selectedGroup ? "Send a message to your group..." : "Select a group to chat"}
-              className="w-full pl-5 pr-12 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-lg outline-none focus:ring-1 focus:ring-blue-400 dark:focus:ring-blue-600 transition-colors"
+              placeholder={selectedGroup ? (selectedMediaFile ? "Add caption or send..." : "Send a message or attach media...") : "Select a group to chat"}
+              className="w-full pl-14 pr-12 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-lg outline-none focus:ring-1 focus:ring-blue-400 dark:focus:ring-blue-600 transition-colors"
               disabled={!selectedGroup || loading}
             />
             <button
               onClick={handleSendMessage}
-              disabled={!selectedGroup || !chatInput.trim() || loading}
+              disabled={!selectedGroup || (!chatInput.trim() && !selectedMediaFile) || loading}
               className="absolute right-2 top-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50"
             >
               <Send size={18} />

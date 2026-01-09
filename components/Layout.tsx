@@ -52,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'notes', name: 'Clearance Engine', icon: Target },
     { id: 'ta', name: 'Strategy TA', icon: MessageSquare },
     { id: 'mock', name: 'The Final Gauntlet', icon: ShieldAlert },
-    { id: 'mastery', name: 'Skill Genome', icon: Zap },
+    // { id: 'mastery', name: 'Skill Genome', icon: Zap }, // Removed Skill Genome
     { id: 'groups', name: 'Study Groups', icon: Users }, // New tool
     { id: 'achievements', name: 'Achievements', icon: Award }, // New tool
   ];

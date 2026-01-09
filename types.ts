@@ -1,4 +1,5 @@
 
+
 export interface UserInfo {
   id: string;
   name: string;
@@ -39,6 +40,8 @@ export interface GroupMessage {
   senderName: string;
   content: string;
   timestamp: string; // ISO date string or serverTimestamp
+  mediaDataUrl?: string; // Base64 encoded media data URL
+  mediaMimeType?: string; // MIME type of the media
 }
 
 export interface StudyGroup {
@@ -70,18 +73,4 @@ export interface Question {
   options?: Record<string, string>;
   answer?: string;
   grading_rubric?: string;
-}
-
-export interface MasteryNode {
-  gene_id: string;
-  gene_name: string;
-  difficulty: number;
-  content_alleles: { type: 'text' | 'video'; content?: string; url?: string }[];
-}
-
-export interface Genome {
-  subject: string;
-  version: string;
-  nodes: MasteryNode[];
-  edges: { from: string; to: string }[];
 }

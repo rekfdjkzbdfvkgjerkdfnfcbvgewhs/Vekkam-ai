@@ -7,7 +7,7 @@ import AuthOverlay from './components/AuthOverlay';
 import PoliciesView from './components/PoliciesView';
 import PersonalTA from './components/PersonalTA';
 import { MockTestGenerator } from './components/MockTestGenerator';
-import MasteryEngine from './components/MasteryEngine';
+// import MasteryEngine from './components/MasteryEngine'; // Removed
 import StudyGroups from './components/StudyGroups'; // New import
 import Achievements from './components/Achievements'; // New import
 import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge } from './types';
@@ -248,9 +248,9 @@ const App: React.FC = () => {
           {activeTool === 'mock' && (
             <MockTestGenerator />
           )}
-          {activeTool === 'mastery' && (
+          {/* {activeTool === 'mastery' && ( // Removed Skill Genome
             <MasteryEngine chunks={allChunks} />
-          )}
+          )} */}
           {activeTool === 'groups' && user && ( // Render StudyGroups component
             <StudyGroups 
               user={user} 
