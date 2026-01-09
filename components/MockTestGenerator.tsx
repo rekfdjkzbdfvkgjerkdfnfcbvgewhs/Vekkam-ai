@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { FileText, ClipboardList, Loader2, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -129,4 +128,26 @@ export const MockTestGenerator: React.FC = () => {
 
             <section className="space-y-5">
               <h3 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <span className="w-7 h-7 bg-blue-600 text-white rounded-md flex items-center justify-center text---- START OF FILE components/MasteryEngine.tsx ---
+                <span className="w-7 h-7 bg-blue-600 text-white rounded-md flex items-center justify-center text-sm">2</span>
+                Short Answer Questions
+              </h3>
+              <div className="grid gap-5">
+                {test?.shortAnswers?.map((q: any, i: number) => (
+                  <div key={i} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 space-y-5 transition-colors">
+                    <p className="font-bold text-lg text-gray-800 dark:text-gray-200">{i+1}. {q.question}</p>
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-800 text-sm">
+                      <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Grading Rubric:</h4>
+                      <div className="prose prose-blue dark:prose-invert max-w-none text-gray-600 dark:text-gray-400">
+                        <ReactMarkdown>{q.rubric}</ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
