@@ -284,7 +284,11 @@ const App: React.FC = () => {
             />
           )}
           {activeTool === 'ta' && (
-            <PersonalTA sessions={sessions} />
+            <PersonalTA 
+              sessions={sessions} 
+              studyGroups={studyGroups} // Pass study groups
+              userBadges={userBadges} // Pass badges
+            />
           )}
           {activeTool === 'mock' && (
             <MockTestGenerator 
