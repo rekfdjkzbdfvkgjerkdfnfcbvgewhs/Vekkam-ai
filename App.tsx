@@ -274,7 +274,7 @@ const App: React.FC = () => {
             <PersonalTA sessions={sessions} />
           )}
           {activeTool === 'mock' && (
-            <MockTestGenerator />
+            <MockTestGenerator notes={activeSessionNotes} />
           )}
           {/* {activeTool === 'mastery' && ( // Removed Skill Genome
             <MasteryEngine chunks={allChunks} />

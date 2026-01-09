@@ -74,3 +74,11 @@ export interface Question {
   answer?: string;
   grading_rubric?: string;
 }
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: string; // The correct option string
+  taxonomy: 'Remembering' | 'Understanding' | 'Applying' | 'Analyzing' | 'Evaluating';
+  explanation: string;
+}

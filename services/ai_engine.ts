@@ -1,5 +1,6 @@
 
-import { Chunk, NoteBlock } from "../types";
+
+import { Chunk, NoteBlock, QuizQuestion } from "../types";
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
@@ -61,6 +62,22 @@ export const processSyllabusFile = async (file: File, instructions: string): Pro
 
   const result = await response.json();
   return result;
+};
+
+
+export const generateBattleQuiz = async (content: string): Promise<QuizQuestion[]> => {
+  const response = await fetch('/api/generate-quiz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate gatekeeper quiz.");
+  }
+
+  const data = await response.json();
+  return data.questions;
 };
 
 

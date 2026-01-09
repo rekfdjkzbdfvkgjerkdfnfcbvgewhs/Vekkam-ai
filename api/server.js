@@ -177,6 +177,85 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
+app.post('/api/generate-quiz', async (req, res) => {
+  const { content } = req.body;
+  if (!content) return res.status(400).json({ error: "No content provided" });
+
+  try {
+    const prompt = `
+      You are an exam gatekeeper.
+      Generate exactly 5 Multiple Choice Questions based on the following text.
+      
+      CRITICAL REQUIREMENT:
+      You must generate exactly one question for each of these Bloom's Taxonomy levels, in this specific order:
+      1. Remembering (Recall facts)
+      2. Understanding (Explain concepts)
+      3. Applying (Use info in new situations)
+      4. Analyzing (Draw connections)
+      5. Evaluating (Justify a stand)
+
+      Return ONLY valid JSON. No markdown formatting.
+      Format:
+      {
+        "questions": [
+          {
+            "question": "Question text here?",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "answer": "Option B", 
+            "taxonomy": "Remembering",
+            "explanation": "Brief explanation of why B is correct."
+          }
+        ]
+      }
+
+      Context Material:
+      ${content.slice(0, 5000)}
+    `;
+
+    const rawResponse = await callLLM(prompt);
+    
+    // Clean potential markdown blocks
+    const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
+    const quizData = JSON.parse(cleanJson);
+
+    if (!quizData.questions || quizData.questions.length !== 5) {
+       throw new Error("Failed to generate 5 valid questions.");
+    }
+
+    res.json(quizData);
+  } catch (e) {
+    console.error("Quiz Generation Failed:", e);
+    res.status(500).json({ error: "Failed to generate gatekeeper quiz." });
+  }
+});
+
+app.post('/api/generate-gauntlet', async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: "No prompt provided" });
+
+  // This endpoint explicitly handles the Mock Test generation
+  // ensuring that the specialized RAG-optimized prompt is processed correctly.
+  try {
+    const rawResponse = await callLLM(prompt);
+    
+    // Attempt to extract JSON
+    const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
+    
+    try {
+      const testData = JSON.parse(cleanJson);
+      res.json(testData);
+    } catch (parseError) {
+      // Fallback: If LLM failed to give pure JSON, stick to raw text or a basic error
+      console.warn("LLM did not return strict JSON for gauntlet:", rawResponse);
+      // Try to wrap in expected structure if it failed
+      res.status(500).json({ error: "Generation format invalid. Please retry.", raw: rawResponse });
+    }
+  } catch (e) {
+    console.error("Gauntlet Generation Failed:", e);
+    res.status(500).json({ error: "Failed to generate gauntlet." });
+  }
+});
+
 app.post('/api/extract', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   try {

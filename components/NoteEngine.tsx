@@ -1,8 +1,9 @@
 
+
 import React, { useState, useRef } from 'react';
-import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy } from 'lucide-react';
-import { Chunk, NoteBlock, UserData, Badge } from '../types';
-import { localAnswerer, processSyllabusFile } from '../services/ai_engine';
+import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy, ShieldAlert, XCircle, RefreshCw } from 'lucide-react';
+import { Chunk, NoteBlock, UserData, Badge, QuizQuestion } from '../types';
+import { localAnswerer, processSyllabusFile, generateBattleQuiz } from '../services/ai_engine';
 import { saveLearningFeedback, saveUserBadge } from '../services/firebase';
 import ReactMarkdown from 'react-markdown';
 
@@ -35,7 +36,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<string>('');
   const [outline, setOutline] = useState<{ topic: string; relevant_chunks: string[] }[]>([]);
-  const [instructions, setInstructions] = useState(''); // Kept for future optional use
+  const [instructions, setInstructions] = useState(''); 
   const [finalNotes, setFinalNotes] = useState<NoteBlock[]>(savedNotes || []);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [chatInput, setChatInput] = useState('');
@@ -43,16 +44,21 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [isAnswering, setIsAnswering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // If there are saved notes (from an existing session), initialize the outline and notes
+  // Quiz State
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizMode, setQuizMode] = useState<'closed' | 'active' | 'victory' | 'defeat'>('closed');
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
+  const [quizScore, setQuizScore] = useState(0);
+
+  // If there are saved notes, initialize
   React.useEffect(() => {
     if (savedNotes && savedNotes.length > 0) {
       setFinalNotes(savedNotes);
       setOutline(savedNotes.map(n => ({ topic: n.topic, relevant_chunks: n.source_chunks || [] })));
-      // No editableOutlineText anymore
       setStep('results');
     }
   }, [savedNotes]);
-
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -60,21 +66,19 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
 
     setIsProcessing(true);
     setProcessStatus(`Prioritizing ${files[0].name} for optimal clearance...`);
-    setStep('synthesizing'); // Transition to synthesizing step
+    setStep('synthesizing');
 
     try {
       const file = files[0]; 
-
-      // Send the file and instructions to the new backend /api/process-syllabus endpoint
-      const { outline: backendOutline, finalNotes: backendFinalNotes, fullText } = await processSyllabusFile(file, instructions); // instructions can be an empty string if not used
+      const { outline: backendOutline, finalNotes: backendFinalNotes, fullText } = await processSyllabusFile(file, instructions);
       
       setAllChunks([{ chunk_id: 'syllabus_full', text: fullText }]); 
       setOutline(backendOutline);
       setFinalNotes(backendFinalNotes);
-      onSaveSession(backendFinalNotes, fullText); // Pass fullText to parent for badge calculation
+      onSaveSession(backendFinalNotes, fullText); 
 
       // Award "Syllabus Survivor" badge
-      const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250); // Estimate pages based on words
+      const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250);
       const badge: Badge = {
         id: `survivor_${Date.now()}`,
         type: 'syllabus_survivor',
@@ -89,11 +93,11 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       };
       await saveUserBadge(userId, badge);
 
-      setStep('results'); // Directly go to results after processing
+      setStep('results'); 
     } catch (err: any) {
       console.error(err);
       alert("Failed to prioritize these files: " + err.message);
-      setStep('upload'); // Go back to upload on error
+      setStep('upload'); 
     } finally {
       setIsProcessing(false);
       setProcessStatus('');
@@ -129,6 +133,47 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     setChatMessages(prev => prev.map((m, i) => 
       i === messageIndex ? { ...m, feedbackGiven: true } : m
     ));
+  };
+
+  const handleUnlockNextBattle = async () => {
+    if (selectedIndex === null || !finalNotes[selectedIndex]) return;
+
+    setQuizLoading(true);
+    setQuizMode('active');
+    setUserAnswers({});
+    setQuizScore(0);
+    setQuizQuestions([]);
+
+    try {
+      const questions = await generateBattleQuiz(finalNotes[selectedIndex].content);
+      setQuizQuestions(questions);
+    } catch (err) {
+      console.error("Quiz generation failed", err);
+      setQuizMode('closed');
+      alert("Failed to generate Gatekeeper Quiz. Please try again.");
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const submitQuiz = () => {
+    let score = 0;
+    quizQuestions.forEach((q, idx) => {
+      if (userAnswers[idx] === q.answer) score++;
+    });
+    setQuizScore(score);
+    if (score >= 4) {
+      setQuizMode('victory');
+    } else {
+      setQuizMode('defeat');
+    }
+  };
+
+  const proceedToNextUnit = () => {
+    setQuizMode('closed');
+    if (selectedIndex !== null && selectedIndex < finalNotes.length - 1) {
+      setSelectedIndex(selectedIndex + 1);
+    }
   };
 
   if (step === 'upload') {
@@ -182,7 +227,134 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors relative">
+      
+      {/* Quiz Overlay */}
+      {quizMode !== 'closed' && (
+        <div className="absolute inset-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
+              <div className="flex items-center gap-3">
+                <ShieldAlert className="text-blue-600 dark:text-blue-400" size={24} />
+                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Gatekeeper Protocol</h3>
+              </div>
+              <button onClick={() => setQuizMode('closed')} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
+                <XCircle size={20} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              {quizLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                   <Loader2 className="animate-spin text-blue-600" size={40} />
+                   <p className="text-gray-500 font-medium">Generating Hostiles (Bloom's Taxonomy Levels 1-5)...</p>
+                </div>
+              ) : quizMode === 'active' ? (
+                <div className="space-y-8">
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-800 dark:text-blue-200">
+                    <p className="font-bold">Clearance Required: 80% (4/5)</p>
+                    <p className="opacity-80">Prove you understand this module before moving forward.</p>
+                  </div>
+                  {quizQuestions.map((q, idx) => (
+                    <div key={idx} className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-bold text-gray-900 dark:text-gray-100 text-lg">
+                          {idx + 1}. {q.question}
+                        </h4>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                          {q.taxonomy}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {q.options.map((opt, optIdx) => (
+                          <label 
+                            key={optIdx} 
+                            className={`flex items-center p-4 rounded-xl border cursor-pointer transition-all ${
+                              userAnswers[idx] === opt 
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-500' 
+                              : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                            }`}
+                          >
+                            <input 
+                              type="radio" 
+                              name={`q-${idx}`} 
+                              value={opt} 
+                              checked={userAnswers[idx] === opt}
+                              onChange={() => setUserAnswers(prev => ({ ...prev, [idx]: opt }))}
+                              className="hidden"
+                            />
+                            <div className={`w-5 h-5 rounded-full border mr-3 flex items-center justify-center ${
+                               userAnswers[idx] === opt ? 'border-blue-600 bg-blue-600' : 'border-gray-400'
+                            }`}>
+                              {userAnswers[idx] === opt && <div className="w-2 h-2 bg-white rounded-full" />}
+                            </div>
+                            <span className="text-gray-700 dark:text-gray-300 font-medium">{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <button 
+                    onClick={submitQuiz}
+                    disabled={Object.keys(userAnswers).length < 5}
+                    className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-200 dark:shadow-none"
+                  >
+                    Submit Solutions
+                  </button>
+                </div>
+              ) : quizMode === 'victory' ? (
+                <div className="text-center py-10 space-y-6 animate-in zoom-in-95">
+                  <div className="w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400">
+                    <Trophy size={48} />
+                  </div>
+                  <h2 className="text-4xl font-black text-gray-900 dark:text-white">BATTLE WON</h2>
+                  <p className="text-xl text-gray-600 dark:text-gray-300">
+                    Score: <span className="font-bold text-emerald-600">{quizScore}/5</span>. You have conquered this unit.
+                  </p>
+                  <button 
+                    onClick={proceedToNextUnit}
+                    className="px-8 py-4 bg-emerald-600 text-white font-bold rounded-xl text-lg hover:bg-emerald-700 transition-all flex items-center gap-2 mx-auto"
+                  >
+                    Enter Next Battle <ArrowRight size={20} />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-10 space-y-6 animate-in zoom-in-95">
+                  <div className="w-24 h-24 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto text-red-600 dark:text-red-400">
+                    <XCircle size={48} />
+                  </div>
+                  <h2 className="text-4xl font-black text-gray-900 dark:text-white">DEFEAT</h2>
+                  <p className="text-xl text-gray-600 dark:text-gray-300">
+                    Score: <span className="font-bold text-red-600">{quizScore}/5</span>. Insufficient clearance.
+                  </p>
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-left text-sm space-y-2">
+                    <p className="font-bold text-gray-500 uppercase tracking-widest text-xs">Tactical Feedback:</p>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-600 dark:text-gray-400">
+                      {quizQuestions.map((q, i) => (
+                        userAnswers[i] !== q.answer && (
+                          <li key={i}>
+                            <span className="font-semibold text-red-500">Q{i+1} Failed:</span> {q.explanation}
+                          </li>
+                        )
+                      ))}
+                    </ul>
+                  </div>
+                  <button 
+                    onClick={() => setQuizMode('closed')}
+                    className="px-8 py-4 bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-bold rounded-xl text-lg hover:opacity-90 transition-all flex items-center gap-2 mx-auto"
+                  >
+                    <RefreshCw size={20} /> Retreat & Review
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         <div className="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
            <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6">Battle Units</h3>
@@ -198,7 +370,8 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                  }`}
                >
                  <span className="font-semibold text-sm truncate">{note.topic}</span>
-                 <ChevronRight size={16} className={`${selectedIndex === idx ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
+                 {idx < (selectedIndex || 0) && <CheckCircle2 size={16} className="text-emerald-300" />}
+                 {idx > (selectedIndex || 0) && <div className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-700" />}
                </button>
              ))}
            </div>
@@ -217,10 +390,14 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               </div>
               <div className="mt-8 pt-8 border-t border-gray-100 dark:border-gray-800 text-center">
                 <button
-                  className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto"
+                  onClick={handleUnlockNextBattle}
+                  className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto shadow-lg shadow-emerald-200 dark:shadow-none"
                 >
                   <Trophy size={20} /> Unlock Next Battle 
                 </button>
+                <p className="mt-3 text-xs text-gray-400 dark:text-gray-500 font-medium">
+                  Warning: Gatekeeper Quiz (Bloom's Taxonomy) active. 80% pass rate required.
+                </p>
               </div>
             </div>
           ) : (
