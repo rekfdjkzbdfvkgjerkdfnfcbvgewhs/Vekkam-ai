@@ -4,6 +4,7 @@ import { MessageSquare, Send, Loader2, Sparkles, Target, ThumbsUp, ThumbsDown, C
 import { Session } from '../types';
 import { localAnswerer } from '../services/ai_engine';
 import { saveLearningFeedback } from '../services/firebase';
+import ReactMarkdown from 'react-markdown';
 
 interface PersonalTAProps {
   sessions: Session[];
@@ -97,7 +98,13 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions }) => {
                     ? 'bg-blue-600 text-white rounded-br-none' 
                     : 'bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-tl-none'
                 }`}>
-                  <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                   {m.role === 'user' ? (
+                     <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                   ) : (
+                     <div className="prose prose-sm prose-invert max-w-none">
+                       <ReactMarkdown>{m.content}</ReactMarkdown>
+                     </div>
+                   )}
                 </div>
                 {m.role === 'assistant' && !m.feedbackGiven && (
                   <div className="flex items-center gap-1 mt-1 px-1">

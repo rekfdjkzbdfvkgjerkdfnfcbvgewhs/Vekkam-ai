@@ -203,8 +203,16 @@ export const synthesizeLocalNote = async (topic: string, text: string, instructi
 
 export const localAnswerer = async (query: string, context: string): Promise<string> => {
   const prompt = `
-    Answer based ONLY on context. No outside info. No motivational nonsense.
-    If it isn't there, say "This isn't in your battle units."
+    You are an expert tutor. The user needs a detailed, comprehensive explanation based on the context.
+    
+    Instructions:
+    1. Answer based ONLY on the context provided.
+    2. Provide GREAT DETAIL. Do not be brief. Explain the 'Why' and 'How'.
+    3. Use Markdown formatting:
+       - **Bold** key terms.
+       - Use bullet points for lists.
+       - Use headers if separating complex ideas.
+    4. If the context doesn't have the answer, say "This isn't in your battle units."
 
     Context:
     ${context}

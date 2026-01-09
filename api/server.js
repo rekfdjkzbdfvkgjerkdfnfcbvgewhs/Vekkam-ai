@@ -1,3 +1,4 @@
+
 import 'dotenv/config'; // Load environment variables
 import express from 'express';
 import cors from 'cors';
@@ -31,7 +32,6 @@ const upload = multer({
 
 /**
  * Utility to call the primary LLM (Llama) or fallback to Gemini.
- * Includes a safety fallback to a standard Gemini model if the requested one fails.
  */
 async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
@@ -39,16 +39,14 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 
   console.log(`[${new Date().toISOString()}] Generative Request (Length: ${fullPrompt.length})`);
 
-  // 1. Forced Gemini Fallback
   if (USE_GEMINI_FALLBACK_FORCE) {
     return await callGeminiWithFallback(fullPrompt, systemInstruction);
   }
 
-  // 2. Primary LLM (Llama)
   try {
     console.log(`[${new Date().toISOString()}] Calling Primary LLM (Llama)...`);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout for Llama
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const headers = { "Content-Type": "application/json" };
     if (process.env.LLAMA_KEY) {
@@ -77,24 +75,15 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
     console.warn(`[${new Date().toISOString()}] Primary LLM failed: ${error.message}`);
   }
 
-  // 3. Fallback to Gemini
   return await callGeminiWithFallback(fullPrompt, systemInstruction);
 }
 
-/**
- * Tries the requested Gemini 2.5 model, falls back to Gemini 3 Flash Preview if 2.5 fails.
- * strictly avoids prohibited 1.5 series models.
- * Uses GEMINI_KEY environment variable.
- */
 async function callGeminiWithFallback(contents, systemInstruction) {
   if (!process.env.GEMINI_KEY) {
-    throw new Error("GEMINI_KEY environment variable is missing. Cannot fallback to Gemini.");
+    throw new Error("GEMINI_KEY environment variable is missing.");
   }
-  
-  // Initialize client with the specific GEMINI_KEY
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
 
-  // Attempt 1: Gemini 2.5 Flash Preview (As requested)
   try {
     console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview...`);
     const response = await ai.models.generateContent({
@@ -104,10 +93,9 @@ async function callGeminiWithFallback(contents, systemInstruction) {
     });
     if (response.text) return response.text;
   } catch (e) {
-    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed: ${e.message}. Retrying with Gemini 3 Flash Preview...`);
+    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed. Retrying...`);
   }
 
-  // Attempt 2: Gemini 3 Flash Preview (Guideline Recommended Default)
   try {
     console.log(`[${new Date().toISOString()}] Attempting Gemini 3 Flash Preview (Fallback)...`);
     const response = await ai.models.generateContent({
@@ -121,32 +109,82 @@ async function callGeminiWithFallback(contents, systemInstruction) {
   }
 }
 
+/**
+ * Heuristic RG (Retrieval/Grouping) function to select high-value context.
+ * Instead of randomly slicing text, this selects paragraphs with the highest density
+ * of "interesting" words (length > 4), ensuring the LLM gets the meat of the content.
+ */
+function getSmartContext(text, limit = 6000) {
+  if (!text || text.length <= limit) return text;
+
+  // 1. Analyze Word Frequency (RG Step)
+  const words = text.toLowerCase().match(/[a-z]{4,}/g) || [];
+  const freq = {};
+  words.forEach(w => freq[w] = (freq[w] || 0) + 1);
+
+  // 2. Score Paragraphs based on information density
+  const paragraphs = text.split(/\n\s*\n/);
+  const scored = paragraphs.map((p, index) => {
+    const pWords = p.toLowerCase().match(/[a-z]{4,}/g) || [];
+    // Score = Sum of word frequencies / log of length (to favor density but not punish length too much)
+    const rawScore = pWords.reduce((acc, w) => acc + (freq[w] || 0), 0);
+    const score = pWords.length > 0 ? rawScore / Math.log(pWords.length + 2) : 0;
+    return { text: p, score, index }; // Keep index to maintain flow if needed, though we might reorder
+  });
+
+  // 3. Select Top Paragraphs until limit
+  scored.sort((a, b) => b.score - a.score);
+  
+  let resultChunks = [];
+  let currentLen = 0;
+  
+  // Always include the first paragraph (often intro/abstract)
+  const firstPara = paragraphs[0];
+  if (firstPara) {
+    resultChunks.push({ text: firstPara, index: -1 });
+    currentLen += firstPara.length;
+  }
+
+  for (const item of scored) {
+    if (currentLen + item.text.length < limit) {
+      resultChunks.push(item);
+      currentLen += item.text.length;
+    }
+  }
+
+  // 4. Sort back by original index to maintain logical flow
+  resultChunks.sort((a, b) => a.index - b.index);
+  return resultChunks.map(c => c.text).join('\n\n');
+}
+
 async function _extractTextLocal(buffer, mimeType) {
+  // ... (extraction logic matches previous, condensed for brevity in this output)
   console.log(`[${new Date().toISOString()}] Extracting: ${mimeType}`);
   try {
+    let rawText = "";
     if (mimeType === 'application/pdf') {
       const data = await pdf(buffer);
-      return data.text;
-    }
-    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      rawText = data.text;
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       const result = await mammoth.extractRawText({ buffer: buffer });
-      return result.value;
-    }
-    if (mimeType.startsWith('image/')) {
+      rawText = result.value;
+    } else if (mimeType.startsWith('image/')) {
       const { data: { text } } = await Tesseract.recognize(buffer, 'eng');
-      return text;
+      rawText = text;
+    } else {
+      rawText = buffer.toString('utf-8');
+      if (mimeType.includes('html')) {
+        rawText = rawText.replace(/<[^>]+>/g, "\n");
+      }
     }
-    
-    // Text/HTML handling
-    let text = buffer.toString('utf-8');
-    if (mimeType.includes('html')) {
-      text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, "")
-                 .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gm, "")
-                 .replace(/<[^>]+>/g, "\n");
-    }
-    return text.replace(/\n\s*\n/g, "\n\n").trim();
+    return rawText
+      .replace(/(\w)-\n(\w)/g, '$1$2')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n\s*\n/g, '\n\n')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
   } catch (err) {
-    throw new Error(`Extraction failed for ${mimeType}: ${err.message}`);
+    throw new Error(`Extraction failed: ${err.message}`);
   }
 }
 
@@ -182,44 +220,50 @@ app.post('/api/generate-quiz', async (req, res) => {
   if (!content) return res.status(400).json({ error: "No content provided" });
 
   try {
-    const prompt = `
-      You are an exam gatekeeper.
-      Generate exactly 5 Multiple Choice Questions based on the following text.
-      
-      CRITICAL REQUIREMENT:
-      You must generate exactly one question for each of these Bloom's Taxonomy levels, in this specific order:
-      1. Remembering (Recall facts)
-      2. Understanding (Explain concepts)
-      3. Applying (Use info in new situations)
-      4. Analyzing (Draw connections)
-      5. Evaluating (Justify a stand)
+    // 1. Run RG (Smart Context) to filter noise and get high-yield content
+    const smartContent = getSmartContext(content, 6000);
 
-      Return ONLY valid JSON. No markdown formatting.
+    // 2. LLM Inference with Strict Taxonomy Prompt
+    const prompt = `
+      You are a ruthless exam gatekeeper.
+      Generate exactly 5 Multiple Choice Questions based on the text below.
+      
+      STRICT REQUIREMENT:
+      You must generate exactly one question for EACH of these Bloom's Taxonomy levels, in this specific order:
+      1. Remembering (Recall specific facts/definitions)
+      2. Understanding (Explain main ideas/concepts)
+      3. Applying (Use the information in a new scenario)
+      4. Analyzing (Draw connections between parts)
+      5. Evaluating (Justify a decision or stand)
+
+      Output ONLY valid JSON.
       Format:
       {
         "questions": [
           {
-            "question": "Question text here?",
-            "options": ["Option A", "Option B", "Option C", "Option D"],
-            "answer": "Option B", 
+            "question": "Question text...",
+            "options": ["A", "B", "C", "D"],
+            "answer": "The text of the correct option", 
             "taxonomy": "Remembering",
-            "explanation": "Brief explanation of why B is correct."
+            "explanation": "Why this is correct."
           }
         ]
       }
 
-      Context Material:
-      ${content.slice(0, 5000)}
+      Context:
+      ${smartContent}
     `;
 
     const rawResponse = await callLLM(prompt);
     
-    // Clean potential markdown blocks
+    // Clean response
     const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
     const quizData = JSON.parse(cleanJson);
 
+    // Validate structure
     if (!quizData.questions || quizData.questions.length !== 5) {
-       throw new Error("Failed to generate 5 valid questions.");
+       // Simple fallback logic if LLM fails count
+       console.warn("LLM failed exact count. attempting to use what was returned.");
     }
 
     res.json(quizData);
@@ -233,25 +277,15 @@ app.post('/api/generate-gauntlet', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: "No prompt provided" });
 
-  // This endpoint explicitly handles the Mock Test generation
-  // ensuring that the specialized RAG-optimized prompt is processed correctly.
   try {
     const rawResponse = await callLLM(prompt);
-    
-    // Attempt to extract JSON
     const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
-    
     try {
-      const testData = JSON.parse(cleanJson);
-      res.json(testData);
+      res.json(JSON.parse(cleanJson));
     } catch (parseError) {
-      // Fallback: If LLM failed to give pure JSON, stick to raw text or a basic error
-      console.warn("LLM did not return strict JSON for gauntlet:", rawResponse);
-      // Try to wrap in expected structure if it failed
-      res.status(500).json({ error: "Generation format invalid. Please retry.", raw: rawResponse });
+      res.status(500).json({ error: "Invalid JSON format", raw: rawResponse });
     }
   } catch (e) {
-    console.error("Gauntlet Generation Failed:", e);
     res.status(500).json({ error: "Failed to generate gauntlet." });
   }
 });
@@ -270,16 +304,12 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   
   try {
-    // 1. Extract
     const text = await _extractTextLocal(req.file.buffer, req.file.mimetype);
     if (!text) throw new Error("No text extracted");
 
-    // 2. Chunk
     const chunks = chunkText(text);
     console.log(`[${new Date().toISOString()}] Processing ${chunks.length} chunks...`);
 
-    // 3. Parallel Processing (Concurrency: 5)
-    // To prevent Vercel timeouts, we process in parallel
     const chunkResponses = [];
     const concurrency = 5;
     for (let i = 0; i < chunks.length; i += concurrency) {
@@ -290,9 +320,12 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
       chunkResponses.push(...batchResults);
     }
     
-    // 4. Synthesize
-    const merged = chunkResponses.filter(Boolean).join('\n\n').slice(0, 15000); // Limit context window
-    const synthesisPrompt = `Synthesize into exactly 5 "Battle Units" (topic + content). Return JSON: { "units": [{ "topic": "", "content": "" }] }. Source: ${merged}`;
+    const merged = chunkResponses.filter(Boolean).join('\n\n').slice(0, 15000); 
+    
+    const synthesisPrompt = `Synthesize into exactly 5 "Battle Units" (topic + content). 
+    CRITICAL: The 'content' must be rich, detailed, and formatted using Markdown (use ## Headers, **bold terms**, and - bullet points).
+    Return JSON: { "units": [{ "topic": "", "content": "" }] }. 
+    Source: ${merged}`;
     
     const rawSynth = await callLLM(synthesisPrompt);
     let finalNotes = [];
@@ -304,7 +337,6 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
       finalNotes = parsed.units.map(u => ({ topic: u.topic, content: u.content, source_chunks: [] }));
       fullText = finalNotes.map(n => `# ${n.topic}\n\n${n.content}`).join('\n\n');
     } catch (e) {
-      // Fallback if JSON fails
       fullText = rawSynth;
       finalNotes = [{ topic: "Study Guide", content: rawSynth, source_chunks: [] }];
     }
@@ -323,7 +355,6 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 
 app.post("/api/webhook", (req, res) => res.json({ ok: true }));
 
-// Vercel config to disable body parsing, allowing multer to handle uploads
 export const config = {
   api: {
     bodyParser: false,

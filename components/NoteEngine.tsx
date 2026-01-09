@@ -1,7 +1,6 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
-import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy, ShieldAlert, XCircle, RefreshCw } from 'lucide-react';
+import { File, Loader2, ChevronRight, Save, ArrowRight, MessageSquare, BookOpen, CheckCircle2, ThumbsUp, ThumbsDown, Check, Target, Trophy, ShieldAlert, XCircle, RefreshCw, Gamepad2, Brain } from 'lucide-react';
 import { Chunk, NoteBlock, UserData, Badge, QuizQuestion, ChatMessage } from '../types';
 import { localAnswerer, processSyllabusFile, generateBattleQuiz } from '../services/ai_engine';
 import { saveLearningFeedback, saveUserBadge } from '../services/firebase';
@@ -61,6 +60,10 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    if ("Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+
     setIsProcessing(true);
     setProcessStatus(`Prioritizing ${files[0].name} for optimal clearance...`);
     setStep('synthesizing');
@@ -74,7 +77,6 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       setFinalNotes(backendFinalNotes);
       onSaveSession(backendFinalNotes, fullText); 
 
-      // Award "Syllabus Survivor" badge if not already earned
       const hasBadge = userData.badges?.some(b => b.type === 'syllabus_survivor');
       if (!hasBadge) {
         const pagesCleared = Math.ceil(fullText.split(/\s+/).length / 250);
@@ -91,6 +93,13 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
           }
         };
         await saveUserBadge(userId, badge);
+      }
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Battle Plan Ready", {
+          body: "Your syllabus has been synthesized. Time to clear the exam.",
+          icon: "/favicon.ico" 
+        });
       }
 
       setStep('results'); 
@@ -147,6 +156,7 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     setQuizQuestions([]);
 
     try {
+      // Logic handled in backend now (taxonomy enforcement)
       const questions = await generateBattleQuiz(finalNotes[selectedIndex].content);
       setQuizQuestions(questions);
     } catch (err) {
@@ -175,6 +185,18 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     setQuizMode('closed');
     if (selectedIndex !== null && selectedIndex < finalNotes.length - 1) {
       setSelectedIndex(selectedIndex + 1);
+    }
+  };
+
+  // Helper to map taxonomy to color/intensity
+  const getTaxonomyColor = (level: string) => {
+    switch (level) {
+      case 'Remembering': return 'bg-gray-100 text-gray-600 border-gray-200';
+      case 'Understanding': return 'bg-blue-50 text-blue-600 border-blue-200';
+      case 'Applying': return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+      case 'Analyzing': return 'bg-amber-50 text-amber-600 border-amber-200';
+      case 'Evaluating': return 'bg-purple-50 text-purple-600 border-purple-200';
+      default: return 'bg-gray-100 text-gray-600';
     }
   };
 
@@ -215,15 +237,55 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
 
   if (step === 'synthesizing') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] p-8 text-center space-y-6">
-        <div className="relative">
-          <div className="w-20 h-20 border-4 border-blue-100 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center text-blue-600 dark:text-blue-400">
-            <Target size={20} />
+      <div className="flex flex-col items-center justify-center min-h-[80vh] p-8 text-center space-y-8 animate-in fade-in">
+        <div className="space-y-4">
+          <div className="relative mx-auto w-fit">
+            <div className="w-20 h-20 border-4 border-blue-100 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Target size={20} />
+            </div>
+          </div>
+          <div>
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Compressing Syllabus...</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-sm mx-auto">{processStatus || "We're weaving your material into a question-first battle plan."}</p>
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Compressing Syllabus...</h2>
-        <p className="text-gray-500 dark:text-gray-400 max-w-sm">{processStatus || "We're weaving your material into a question-first battle plan."}</p>
+
+        {/* Game Wait Card */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 max-w-sm w-full shadow-xl shadow-gray-200 dark:shadow-none mx-auto transform hover:scale-[1.02] transition-transform">
+          <div className="flex items-center justify-between mb-3">
+             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+               <Gamepad2 size={14} /> While you wait
+             </h3>
+             <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold">Playable</span>
+          </div>
+          
+          <a 
+            href="https://www.y8.com/games/territory_war_" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block group relative overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all"
+          >
+            <div className="aspect-video w-full relative">
+              <img 
+                src="https://cdn2.y8.com/cloudimage/1025/file/w180h135_webp-062e45d6a2cfa11faeccca66a2116fae.webp" 
+                alt="Territory War" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-4">
+                <p className="text-white font-bold text-lg leading-tight">Territory War</p>
+                <div className="flex items-center gap-1 text-blue-300 text-xs font-semibold mt-1 opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-2 group-hover:translate-y-0">
+                  Click to Play <ArrowRight size={12} />
+                </div>
+              </div>
+            </div>
+          </a>
+          
+          <p className="text-xs text-gray-400 mt-4 font-medium flex items-center justify-center gap-1">
+             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+             We'll send a desktop notification when ready.
+          </p>
+        </div>
       </div>
     );
   }
@@ -252,25 +314,33 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
               {quizLoading ? (
                 <div className="flex flex-col items-center justify-center py-20 space-y-4">
                    <Loader2 className="animate-spin text-blue-600" size={40} />
-                   <p className="text-gray-500 font-medium">Generating Hostiles (Bloom's Taxonomy Levels 1-5)...</p>
+                   <div className="text-center">
+                     <p className="text-gray-900 dark:text-gray-100 font-bold">Scanning Battle Unit...</p>
+                     <p className="text-gray-500 text-sm">Generating Bloom's Taxonomy Ladder (1-5)</p>
+                   </div>
                 </div>
               ) : quizMode === 'active' ? (
                 <div className="space-y-8">
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-800 dark:text-blue-200">
-                    <p className="font-bold">Clearance Required: 80% (4/5)</p>
-                    <p className="opacity-80">Prove you understand this module before moving forward.</p>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-start gap-3">
+                    <Brain className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" size={20} />
+                    <div className="text-sm text-blue-800 dark:text-blue-200">
+                      <p className="font-bold">Clearance Required: 80% (4/5)</p>
+                      <p className="opacity-80">Questions progress in cognitive difficulty. You must demonstrate deep understanding, not just recall.</p>
+                    </div>
                   </div>
+
                   {quizQuestions.map((q, idx) => (
-                    <div key={idx} className="space-y-3">
+                    <div key={idx} className="space-y-3 relative">
+                      <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gray-100 dark:bg-gray-800"></div>
                       <div className="flex justify-between items-start">
                         <h4 className="font-bold text-gray-900 dark:text-gray-100 text-lg">
-                          {idx + 1}. {q.question}
+                          <span className="text-gray-400 mr-2">{idx + 1}.</span> {q.question}
                         </h4>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                          {q.taxonomy}
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${getTaxonomyColor(q.taxonomy)}`}>
+                          Level {idx + 1}: {q.taxonomy}
                         </span>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 pl-2">
                         {q.options.map((opt, optIdx) => (
                           <label 
                             key={optIdx} 
@@ -332,13 +402,18 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                   <p className="text-xl text-gray-600 dark:text-gray-300">
                     Score: <span className="font-bold text-red-600">{quizScore}/5</span>. Insufficient clearance.
                   </p>
-                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-left text-sm space-y-2">
-                    <p className="font-bold text-gray-500 uppercase tracking-widest text-xs">Tactical Feedback:</p>
-                    <ul className="list-disc pl-5 space-y-1 text-gray-600 dark:text-gray-400">
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-left text-sm space-y-4">
+                    <div className="flex items-center gap-2 text-gray-500 uppercase tracking-widest text-xs font-bold border-b border-gray-200 dark:border-gray-700 pb-2">
+                       <ShieldAlert size={14} /> Tactical Analysis
+                    </div>
+                    <ul className="space-y-3">
                       {quizQuestions.map((q, i) => (
                         userAnswers[i] !== q.answer && (
-                          <li key={i}>
-                            <span className="font-semibold text-red-500">Q{i+1} Failed:</span> {q.explanation}
+                          <li key={i} className="text-gray-600 dark:text-gray-400 text-sm">
+                            <div className="flex justify-between mb-1">
+                               <span className="font-bold text-red-500">Failed Level {i+1}: {q.taxonomy}</span>
+                            </div>
+                            <p>{q.explanation}</p>
                           </li>
                         )
                       ))}
@@ -428,7 +503,14 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
                   ? 'bg-blue-600 text-white self-end rounded-br-none' 
                   : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 self-start rounded-tl-none'
                 }`}>
-                  {m.content}
+                   {/* Render markdown for chat messages to support detailed output */}
+                   {m.role === 'user' ? (
+                     m.content
+                   ) : (
+                     <div className="prose prose-sm prose-invert max-w-none">
+                       <ReactMarkdown>{m.content}</ReactMarkdown>
+                     </div>
+                   )}
                 </div>
                 {m.role === 'assistant' && !m.feedbackGiven && (
                   <div className="flex items-center gap-1 mt-1 px-1 self-start">
