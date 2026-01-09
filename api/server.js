@@ -77,15 +77,18 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 }
 
 /**
- * Tries the requested Gemini model, falls back to standard Flash if it fails.
+ * Tries the requested Gemini 2.5 model, falls back to Gemini 3 Flash Preview if 2.5 fails.
+ * strictly avoids prohibited 1.5 series models.
  */
 async function callGeminiWithFallback(contents, systemInstruction) {
   if (!process.env.API_KEY) {
-    throw new Error("API_KEY not set for Gemini fallback.");
+    throw new Error("API_KEY environment variable is missing. Cannot fallback to Gemini.");
   }
+  
+  // Initialize client with the key
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  // Try the requested 2.5 model
+  // Attempt 1: Gemini 2.5 Flash Preview (As requested)
   try {
     console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview...`);
     const response = await ai.models.generateContent({
@@ -95,19 +98,20 @@ async function callGeminiWithFallback(contents, systemInstruction) {
     });
     if (response.text) return response.text;
   } catch (e) {
-    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed: ${e.message}. Retrying with Gemini 1.5 Flash...`);
+    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed: ${e.message}. Retrying with Gemini 3 Flash Preview...`);
   }
 
-  // Fallback to standard 1.5 Flash
+  // Attempt 2: Gemini 3 Flash Preview (Guideline Recommended Default)
   try {
+    console.log(`[${new Date().toISOString()}] Attempting Gemini 3 Flash Preview (Fallback)...`);
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: contents,
       config: { systemInstruction }
     });
     return response.text || "No response generated.";
   } catch (e) {
-    throw new Error(`All LLM attempts failed. Last error: ${e.message}`);
+    throw new Error(`All Gemini attempts failed. Last error: ${e.message}`);
   }
 }
 
