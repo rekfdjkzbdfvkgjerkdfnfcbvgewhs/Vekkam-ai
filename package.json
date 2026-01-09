@@ -2,9 +2,10 @@
   "name": "vekkam-engine",
   "version": "1.0.0",
   "description": "Fullstack AI Study Engine",
-  "main": "api/index.mjs",
+  "main": "api/index.js",
+  "type": "module",
   "scripts": {
-    "start": "node api/index.mjs",
+    "start": "node api/index.js",
     "build": "vite build",
     "dev": "vite"
   },
