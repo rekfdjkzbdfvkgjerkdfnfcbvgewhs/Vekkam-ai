@@ -33,7 +33,7 @@ const upload = multer({
 });
 
 /**
- * Utility to call the primary LLM (Qwen on Render) or fallback to Gemini, then Llama.
+ * Utility to call the primary LLM (Qwen on Render) or fallback to Gemini.
  */
 async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
@@ -44,12 +44,12 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   // Attempt 1: Forced Gemini Fallback (if env var is true)
   if (USE_GEMINI_FALLBACK_FORCE) {
     console.log(`[${new Date().toISOString()}] Attempting text generation with Forced Gemini Fallback (USE_GEMINI_FALLBACK_FORCE is true).`);
-    if (!process.env.GEMINI_KEY) {
-      throw new Error("GEMINI_KEY environment variable is not set for forced fallback.");
+    if (!process.env.API_KEY) {
+      throw new Error("API_KEY environment variable is not set for forced fallback.");
     }
     try {
       // Instantiate Gemini client here
-      const geminiAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+      const geminiAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await geminiAI.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: fullPrompt,
@@ -93,12 +93,12 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 
   // Attempt 2: Gemini Fallback
   console.log(`[${new Date().toISOString()}] Attempting text generation with Gemini Fallback.`);
-  if (!process.env.GEMINI_KEY) {
-    console.warn(`[${new Date().toISOString()}] GEMINI_KEY environment variable is not set. Skipping Gemini fallback.`);
+  if (!process.env.API_KEY) {
+    console.warn(`[${new Date().toISOString()}] API_KEY environment variable is not set. Skipping Gemini fallback.`);
   } else {
     try {
       // Instantiate Gemini client here
-      const geminiAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+      const geminiAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await geminiAI.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: fullPrompt,
@@ -114,28 +114,6 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
     }
   }
 
-  // Attempt 3: Llama Fallback
-  console.log(`[${new Date().toISOString()}] Attempting text generation with Llama Fallback.`);
-  if (!process.env.LLAMA_KEY) {
-    console.warn(`[${new Date().toISOString()}] LLAMA_KEY environment variable is not set. Skipping Llama fallback.`);
-  } else {
-    try {
-      // Instantiate Llama client here
-      const llamaAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY });
-      const response = await llamaAI.models.generateContent({
-        model: 'gemini-3-flash-preview', // Assuming LLAMA_KEY points to another Gemini endpoint
-        contents: fullPrompt,
-        config: { systemInstruction: systemInstruction }
-      });
-      responseText = response.text;
-      if (responseText) {
-        console.log(`[${new Date().toISOString()}] Text generation successful with Llama Fallback.`);
-        return responseText;
-      }
-    } catch (llamaError) {
-      console.warn(`[${new Date().toISOString()}] Llama Fallback failed:`, llamaError.message);
-    }
-  }
   // If we reach here, no LLM provided a valid response
   throw new Error("No LLM provided a valid response after all fallbacks.");
 }
@@ -297,48 +275,55 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     }
     console.log(`[${new Date().toISOString()}] /api/process-syllabus: Finished processing chunks.`);
 
-    // 4. Merge Outputs (Second Pass Synthesis)
-    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 4 - Merging and synthesizing content.`);
+    // 4. Merge Outputs (Structured Synthesis)
+    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 4 - Synthesizing into structured Battle Units.`);
     const mergedContent = chunkResponses.join('\n\n');
-    const finalSynthesisPrompt = `Synthesize the following high-yield study points into a comprehensive, exam-focused document. 
-    Format ruthlessly for fast reading: markdown, bold terms, bullet points, numbered lists where appropriate. 
-    Focus on creating a structured, concise overview of the material.
+
+    // Unified structured prompt to reduce duplicates and unnecessary calls
+    const finalSynthesisPrompt = `Synthesize the following high-yield study points into exactly 5 distinct "Battle Units" (modules).
+    Format ruthlessly for fast reading: markdown, bold terms, bullet points.
     ${instructions ? "Specific instructions: " + instructions : ""}
     
-    Synthesize this:
-    ${mergedContent}`;
-    const finalSynthesizedText = await callLLM(finalSynthesisPrompt); // Use callLLM for fallback
-    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Final synthesis complete. Text length: ${finalSynthesizedText.length}`);
-
-    // 5. Generate Outline
-    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 5 - Generating outline.`);
-    const outlinePrompt = `Divide the following synthesized material into exactly 5 ruthless battle units for the exam. 
-    Cut the fluff. Prioritize high-yield topics.
-    IMPORTANT: Return ONLY a valid JSON object. 
-    Format: {"outline": [{"topic": "Name", "relevant_chunks": []}]} (relevant_chunks can be empty as this is post-synthesis)
-    
-    Material: ${finalSynthesizedText.substring(0, Math.min(finalSynthesizedText.length, 2000))}...`; // Limit input for outline generation
-    const outlineResultRaw = await callLLM(outlinePrompt); // Use callLLM for fallback
-    let outline = [];
-    try {
-      const cleanJson = outlineResultRaw.replace(/```json|```/g, '').trim();
-      outline = JSON.parse(cleanJson).outline;
-      console.log(`[${new Date().toISOString()}] /api/process-syllabus: Outline generated successfully.`);
-    } catch (parseError) {
-      console.error(`[${new Date().toISOString()}] /api/process-syllabus: Failed to parse outline JSON:`, outlineResultRaw, parseError);
-      // Fallback to a simple outline if parsing fails
-      outline = ["Exam Overview", "Core High-Yield Concepts", "Critical Reasoning", "Application Patterns", "Final Clearance"].map(topic => ({ topic, relevant_chunks: [] }));
+    IMPORTANT: Return valid JSON ONLY.
+    Structure:
+    {
+      "units": [
+        { "topic": "Name of Unit", "content": "Comprehensive markdown content for this unit." }
+      ]
     }
 
-    // 6. Generate NoteBlocks (re-using finalSynthesizedText and outline)
-    console.log(`[${new Date().toISOString()}] /api/process-syllabus: Step 6 - Generating final note blocks.`);
-    const finalNotes = outline.map(o => ({
-      topic: o.topic,
-      content: finalSynthesizedText, // For simplicity, current implementation uses entire synthesized text for all notes
-      source_chunks: [] // Since we've merged, chunk IDs are less direct for final notes
-    }));
+    Source Material:
+    ${mergedContent}`;
 
-    res.status(200).json({ outline: outline, finalNotes: finalNotes, fullText: finalSynthesizedText });
+    const synthesisResultRaw = await callLLM(finalSynthesisPrompt);
+    
+    let finalNotes = [];
+    let fullText = "";
+
+    try {
+        const cleanJson = synthesisResultRaw.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(cleanJson);
+        finalNotes = parsed.units.map(u => ({
+            topic: u.topic,
+            content: u.content,
+            source_chunks: []
+        }));
+        // Construct full text for fallback/completeness
+        fullText = finalNotes.map(n => `# ${n.topic}\n\n${n.content}`).join('\n\n');
+        console.log(`[${new Date().toISOString()}] /api/process-syllabus: Structured synthesis successful.`);
+    } catch (e) {
+        console.warn(`[${new Date().toISOString()}] /api/process-syllabus: JSON parsing failed, falling back to unstructured synthesis. Error: ${e.message}`);
+        // Fallback: standard synthesis if JSON fails
+        const fallbackPrompt = `Synthesize this into a comprehensive exam guide with headers. \n\n${mergedContent}`;
+        fullText = await callLLM(fallbackPrompt);
+        finalNotes = [{ topic: "Exam Guide", content: fullText, source_chunks: [] }];
+    }
+
+    // 5. Response
+    // We implicitly generated the outline via the JSON units.
+    const outline = finalNotes.map(n => ({ topic: n.topic, relevant_chunks: [] }));
+
+    res.status(200).json({ outline: outline, finalNotes: finalNotes, fullText: fullText });
     console.log(`[${new Date().toISOString()}] /api/process-syllabus: Full syllabus processed and response sent.`);
 
   } catch (error) {

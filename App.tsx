@@ -21,10 +21,11 @@ import {
   getFirestoreSessions,
   deleteFirestoreSession,
   getStudyGroupsForUser, // New import
-  getUserBadges // New import
+  getUserBadges, // New import
+  getSessionContent, // New import
+  subscribeToUserData // New import
 } from './services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
 import { Analytics } from "@vercel/analytics/react";
 
 const App: React.FC = () => {
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState('notes');
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
+  const [isFetchingContent, setIsFetchingContent] = useState(false);
 
   // LLM Fallback state - set to true to indicate temporary Gemini usage
   const [showLLMFallbackAlert, setShowLLMFallbackAlert] = useState(true);
@@ -89,14 +91,11 @@ const App: React.FC = () => {
           const fetchedBadges = await getUserBadges(firebaseUser.uid); // Fetch badges
           setUserBadges(fetchedBadges);
 
-          const unsubDoc = onSnapshot(doc(db, "users", firebaseUser.uid), (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data() as UserData;
-              setUserData(data);
-              setUserBadges(data.badges || []); // Update badges from snapshot
-              // No direct update to studyGroups from snapshot here as group details are in 'study_groups' collection
-              // but groupIds are updated here. If group data needs to be live, a separate listener is needed.
-            }
+          const unsubDoc = subscribeToUserData(firebaseUser.uid, (data) => {
+             setUserData(data);
+             setUserBadges(data.badges || []); // Update badges from snapshot
+             // No direct update to studyGroups from snapshot here as group details are in 'study_groups' collection
+             // but groupIds are updated here. If group data needs to be live, a separate listener is needed.
           });
 
           setLoading(false);
@@ -146,18 +145,42 @@ const App: React.FC = () => {
       await updateFirestoreUser(user.id, {
         total_analyses: (userData.total_analyses || 0) + 1
       });
+      // Update local state with the new session, containing full notes initially for immediate display
       setSessions(prev => [newSession, ...prev]);
-      // Badges are now handled inside NoteEngine
+      setActiveSessionNotes(notes);
     } catch (err) {
       console.error("Failed to save session:", err);
     }
   };
 
-  const handleSessionSelect = (id: string) => {
+  const handleSessionSelect = async (id: string) => {
+    if (!user) return;
+
+    // First check if we already have the full notes in memory (optimization for just-saved session)
+    // Actually, sessions in state might only have metadata (empty content) if fetched from DB
     const session = sessions.find(s => s.id === id);
-    if (session) {
+    if (!session) return;
+    
+    // Check if the current session object has content. If it does (e.g. just saved), use it.
+    if (session.notes.length > 0 && session.notes[0].content && session.notes[0].content.length > 0) {
       setActiveSessionNotes(session.notes);
       setActiveTool('notes');
+      return;
+    }
+
+    // Otherwise fetch content from Firestore
+    setIsFetchingContent(true);
+    try {
+      const content = await getSessionContent(user.id, id);
+      setActiveSessionNotes(content);
+      setActiveTool('notes');
+    } catch (err) {
+      console.error("Failed to fetch session content:", err);
+      // Fallback: use what we have (likely empty content, but prevents crash)
+      setActiveSessionNotes(session.notes);
+      setActiveTool('notes');
+    } finally {
+      setIsFetchingContent(false);
     }
   };
 
@@ -230,7 +253,12 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
-        <div className="h-full">
+        <div className="h-full relative">
+          {isFetchingContent && (
+             <div className="absolute inset-0 bg-white/80 dark:bg-gray-950/80 z-50 flex items-center justify-center">
+                <Loader2 className="animate-spin text-blue-600" size={32} />
+             </div>
+          )}
           {activeTool === 'notes' && (
             <NoteEngine 
               allChunks={allChunks} 

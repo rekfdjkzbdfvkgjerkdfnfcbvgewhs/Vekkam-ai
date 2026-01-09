@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { 
   getAuth, 
@@ -21,12 +20,12 @@ import {
   arrayUnion,
   arrayRemove,
   serverTimestamp,
-  updateDoc, // Added missing import
-  where,     // Added missing import
-  onSnapshot, // Added missing import
-  Firestore 
+  updateDoc,
+  where,
+  onSnapshot
 } from "firebase/firestore";
-import { UserData, Session, Badge, StudyGroup, GroupMessage } from "../types";
+import type { Firestore } from "firebase/firestore";
+import { UserData, Session, Badge, StudyGroup, GroupMessage, NoteBlock } from "../types";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAEZpRngu0QxJ1e1oc5X0d-w2pN78Nu4aU",
@@ -63,22 +62,55 @@ export const ensureUserDoc = async (uid: string, initialData: UserData): Promise
   return existingData;
 };
 
-export const updateFirestoreUser = async (uid: string, data: Partial<UserData>) => {
+export const updateFirestoreUser = async (uid: string, data: any) => {
   const userRef = doc(db, "users", uid);
   await setDoc(userRef, data, { merge: true });
 };
 
+export const subscribeToUserData = (uid: string, callback: (data: UserData) => void) => {
+  const userRef = doc(db, "users", uid);
+  return onSnapshot(userRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data() as UserData);
+    }
+  });
+};
+
+// Optimized: Splits heavy content from metadata
 export const saveFirestoreSession = async (uid: string, session: Session) => {
+  // 1. Save metadata (lightweight) to 'sessions' collection
   const sessionRef = doc(db, "users", uid, "sessions", session.id);
-  await setDoc(sessionRef, session);
+  const lightweightNotes = session.notes.map(n => ({
+    topic: n.topic,
+    content: "", // Strip content to save space
+    source_chunks: []
+  }));
+  const metadataSession: Session = {
+    ...session,
+    notes: lightweightNotes
+  };
+  await setDoc(sessionRef, metadataSession);
+
+  // 2. Save full content (heavy) to 'session_contents' collection
+  const contentRef = doc(db, "users", uid, "session_contents", session.id);
+  await setDoc(contentRef, {
+    id: session.id,
+    notes: session.notes
+  });
 };
 
 export const deleteFirestoreSession = async (uid: string, sessionId: string) => {
+  // Delete metadata
   const sessionRef = doc(db, "users", uid, "sessions", sessionId);
   await deleteDoc(sessionRef);
+  
+  // Delete content
+  const contentRef = doc(db, "users", uid, "session_contents", sessionId);
+  await deleteDoc(contentRef);
 };
 
 export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
+  // Only fetches metadata (fast, small docs)
   const sessionsRef = collection(db, "users", uid, "sessions");
   const q = query(sessionsRef, orderBy("timestamp", "desc"));
   const querySnapshot = await getDocs(q);
@@ -88,6 +120,28 @@ export const getFirestoreSessions = async (uid: string): Promise<Session[]> => {
     sessions.push(doc.data() as Session);
   });
   return sessions;
+};
+
+// New function to fetch heavy content on demand
+export const getSessionContent = async (uid: string, sessionId: string): Promise<NoteBlock[]> => {
+  const contentRef = doc(db, "users", uid, "session_contents", sessionId);
+  const contentSnap = await getDoc(contentRef);
+
+  if (contentSnap.exists()) {
+    return contentSnap.data().notes as NoteBlock[];
+  } else {
+    // Fallback for legacy sessions where content might be in the metadata doc
+    const sessionRef = doc(db, "users", uid, "sessions", sessionId);
+    const sessionSnap = await getDoc(sessionRef);
+    if (sessionSnap.exists()) {
+      const data = sessionSnap.data() as Session;
+      // If legacy doc has content, return it, otherwise return empty
+      if (data.notes && data.notes.length > 0 && data.notes[0].content) {
+        return data.notes;
+      }
+    }
+    return [];
+  }
 };
 
 export const saveUserBadge = async (uid: string, badge: Badge) => {
