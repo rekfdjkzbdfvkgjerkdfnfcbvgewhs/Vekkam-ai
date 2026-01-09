@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { FileText, ClipboardList, Loader2, CheckCircle2, AlertTriangle, ArrowRight, BrainCircuit, ScanSearch, Microscope, Database, MessageSquare, Siren } from 'lucide-react';
+import { FileText, Loader2, CheckCircle2, ArrowRight, ScanSearch, CheckCircle, Database, MessageSquare, ClipboardList, BookOpen } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { NoteBlock, ChatMessage } from '../types';
 
@@ -44,18 +44,18 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
     const combinedText = sourceText + "\n\n" + chatContext;
 
     // Stage 1: NLP Analysis
-    setDiagnosticStage('Scanning for Conceptual Gaps...');
+    setDiagnosticStage('Scanning content for key themes...');
     await new Promise(r => setTimeout(r, 800)); // Simulate processing
     const keywords = getKeywords(combinedText);
     
     // Stage 2: RAG Chunking
-    setDiagnosticStage('Isolating High-Yield Risk Areas...');
+    setDiagnosticStage('Identifying high-priority concepts...');
     await new Promise(r => setTimeout(r, 800));
     
     // Heuristic: If text > 8000 chars, chunk and prioritize
     let refinedContext = combinedText;
     if (combinedText.length > 8000) {
-      setDiagnosticStage('Optimizing Challenge Parameters...');
+      setDiagnosticStage('Optimizing diagnostic parameters...');
       const chunks = chunkString(combinedText, 1500);
       
       // Simple RAG simulation: Prioritize chunks with high keyword density + First/Last chunks
@@ -77,7 +77,7 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
     }
 
     // Stage 3: Construction
-    setDiagnosticStage('Finalizing Truth Serum...');
+    setDiagnosticStage('Finalizing assessment...');
     return refinedContext;
   };
 
@@ -105,7 +105,7 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
       Material: ${optimizedContext.slice(0, 10000)}
       
       REQUIREMENTS:
-      1. 5 MCQs (Hard difficulty - designed to trap students who only skimmed).
+      1. 5 MCQs (Moderate-Hard difficulty).
       2. 2 Short Answer Questions (Requires synthesis, not just recall).
       3. Return ONLY valid JSON.
       
@@ -137,33 +137,27 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
 
   if (step === 'diagnosing') {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-white dark:bg-black p-8 space-y-8 animate-in fade-in">
+      <div className="h-full flex flex-col items-center justify-center bg-white dark:bg-gray-950 p-8 space-y-8 animate-in fade-in">
         <div className="relative">
-          <div className="w-24 h-24 border-4 border-gray-200 dark:border-gray-800 border-t-black dark:border-t-white rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center text-black dark:text-white">
-            <Microscope size={32} />
-          </div>
+          <Loader2 size={48} className="animate-spin text-blue-600" />
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold text-black dark:text-white">Analyzing Risk Profile</h2>
-          <p className="text-gray-500 font-mono text-sm animate-pulse">{diagnosticStage}</p>
-        </div>
-        <div className="max-w-md w-full bg-gray-100 dark:bg-gray-900 rounded-full h-2 overflow-hidden">
-          <div className="h-full bg-black dark:bg-white animate-progress origin-left"></div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Analyzing Content</h2>
+          <p className="text-blue-600 dark:text-blue-400 font-medium text-sm animate-pulse">{diagnosticStage}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full bg-white dark:bg-black flex flex-col transition-colors">
-      <div className="p-8 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+    <div className="h-full bg-white dark:bg-gray-950 flex flex-col transition-colors">
+      <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-black text-black dark:text-white uppercase tracking-tight">Truth Serum</h2>
-          <p className="text-gray-500 dark:text-gray-400 font-medium">Find out if you'll pass before you walk in.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Diagnostic Assessment</h2>
+          <p className="text-gray-500 dark:text-gray-400 font-medium mt-1">Check your understanding of the material.</p>
         </div>
-        <div className="p-3 bg-gray-100 dark:bg-gray-900 text-black dark:text-white rounded-lg">
-           <Microscope size={28} />
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
+           <CheckCircle size={24} />
         </div>
       </div>
 
@@ -173,33 +167,28 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
             
             {/* Option 1: Use Existing Battle Plan */}
             {notes && notes.length > 0 && (
-              <div className="bg-gray-50 dark:bg-gray-900 p-8 rounded-lg border border-black dark:border-white relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-4 opacity-10 text-black dark:text-white">
+              <div className="bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-blue-900/10 p-8 rounded-2xl border border-blue-100 dark:border-blue-800/30 relative overflow-hidden group shadow-sm hover:shadow-md transition-all">
+                 <div className="absolute top-0 right-0 p-4 opacity-5">
                    <Database size={120} />
                  </div>
                  <div className="relative z-10 space-y-4">
                    <div className="flex items-center gap-3 mb-2">
-                     <span className="px-3 py-1 bg-black dark:bg-white text-white dark:text-black text-xs font-bold uppercase tracking-widest rounded-full">Recommended</span>
-                     <span className="flex items-center gap-1 text-xs font-bold text-black dark:text-white uppercase tracking-wide">
-                       <ScanSearch size={14} /> Full Diagnostics
+                     <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold uppercase tracking-widest rounded-full">Recommended</span>
+                     <span className="flex items-center gap-1 text-xs font-bold text-gray-500 uppercase tracking-wide">
+                       <ScanSearch size={14} /> Comprehensive Scan
                      </span>
-                     {chatHistory.length > 0 && (
-                        <span className="flex items-center gap-1 text-xs font-bold text-gray-500 uppercase tracking-wide">
-                           <MessageSquare size={14} /> + Chat History
-                        </span>
-                     )}
                    </div>
-                   <h3 className="text-2xl font-black text-black dark:text-white">Run Full Diagnostics</h3>
-                   <p className="text-gray-600 dark:text-gray-300 max-w-lg font-medium">
-                     We will scan your {notes.length} unlocked units {chatHistory.length > 0 ? `and ${chatHistory.length} interactions` : ''} to build a test designed to expose your specific weaknesses.
+                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Run Full Diagnostic</h3>
+                   <p className="text-gray-600 dark:text-gray-300 max-w-lg font-medium leading-relaxed">
+                     We'll scan your {notes.length} active units to build a customized test that targets your specific study material.
                    </p>
                    <button
                     onClick={() => handleGenerate(true)}
                     disabled={loading}
-                    className="px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-lg font-black text-lg hover:opacity-80 active:scale-95 transition-all flex items-center gap-3 shadow-md"
+                    className="px-8 py-4 bg-blue-600 text-white rounded-xl font-semibold text-lg hover:bg-blue-700 transition-all flex items-center gap-3 shadow-lg shadow-blue-600/20"
                    >
-                     {loading ? <Loader2 className="animate-spin" /> : <Siren />}
-                     Expose My Blind Spots
+                     {loading ? <Loader2 className="animate-spin" /> : <ClipboardList />}
+                     Generate Test
                    </button>
                  </div>
               </div>
@@ -214,12 +203,12 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
             {/* Option 2: Manual Input */}
             <div className="space-y-6">
               <div className="flex gap-4 items-start">
-                 <div className="p-3 bg-gray-100 dark:bg-gray-900 rounded-lg text-black dark:text-white">
+                 <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400">
                    <FileText size={20} />
                  </div>
                  <div>
-                   <h3 className="text-lg font-bold text-black dark:text-white">Manual Override</h3>
-                   <p className="text-sm text-gray-500 dark:text-gray-400">Paste raw text to test specific concepts.</p>
+                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Manual Input</h3>
+                   <p className="text-sm text-gray-500 dark:text-gray-400">Paste text to test specific concepts.</p>
                  </div>
               </div>
 
@@ -227,70 +216,70 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
                 value={syllabus}
                 onChange={(e) => setSyllabus(e.target.value)}
                 placeholder="Paste chapter content, notes, or syllabus outline here..."
-                className="w-full h-48 p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg focus:border-black dark:focus:border-white outline-none transition-all font-medium text-black dark:text-white resize-none"
+                className="w-full h-48 p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 focus:border-blue-400 dark:focus:border-blue-600 outline-none transition-all font-medium text-gray-700 dark:text-gray-300 resize-none shadow-inner"
               />
 
               <button
                 onClick={() => handleGenerate(false)}
                 disabled={!syllabus.trim() || loading}
-                className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-lg font-bold text-lg hover:opacity-90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-wide"
+                className="w-full py-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl font-bold text-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
-                Generate Diagnostic
+                Generate from Text
               </button>
             </div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto space-y-10 pb-16 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-black dark:text-white">
-                <CheckCircle2 size={18} />
-                <span className="text-xs font-bold uppercase tracking-widest">Diagnostic Ready</span>
+              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 size={20} />
+                <span className="text-sm font-semibold">Assessment Ready</span>
               </div>
               <button 
                 onClick={() => setStep('input')} 
-                className="text-gray-500 font-bold hover:text-black dark:hover:text-white transition-colors uppercase text-xs tracking-wide"
+                className="text-blue-600 dark:text-blue-400 font-semibold hover:underline transition-colors text-sm"
               >
-                Run Another Scan
+                Start Over
               </button>
             </div>
 
-            <section className="space-y-5">
-              <h3 className="text-2xl font-extrabold text-black dark:text-white flex items-center gap-2">
-                <span className="w-8 h-8 bg-black dark:bg-white text-white dark:text-black rounded-lg flex items-center justify-center text-sm">1</span>
-                Multiple Choice (Trap Questions)
+            <section className="space-y-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-3">
+                <span className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center text-sm font-bold">1</span>
+                Multiple Choice Questions
               </h3>
-              <div className="grid gap-5">
+              <div className="grid gap-6">
                 {test?.mcqs?.map((q: any, i: number) => (
-                  <div key={i} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 space-y-5 transition-colors shadow-sm">
-                    <p className="font-bold text-lg text-black dark:text-white">{i+1}. {q.question}</p>
+                  <div key={i} className="p-6 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 space-y-5 transition-colors shadow-sm">
+                    <p className="font-semibold text-lg text-gray-800 dark:text-gray-200">{i+1}. {q.question}</p>
                     <div className="grid md:grid-cols-2 gap-3">
                       {q.options?.map((opt: string, j: number) => (
-                        <div key={j} className="p-3 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors">
-                          {String.fromCharCode(65 + j)}. {opt}
+                        <div key={j} className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 transition-colors">
+                          <span className="font-bold text-gray-400 mr-2">{String.fromCharCode(65 + j)}.</span> {opt}
                         </div>
                       ))}
                     </div>
-                    <div className="pt-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 text-black dark:text-white text-xs font-bold">
-                      <CheckCircle2 size={14} /> Correct Answer: {q.answer}
+                    <div className="pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-sm font-semibold">
+                      <CheckCircle2 size={16} /> Correct Answer: {q.answer}
                     </div>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="space-y-5">
-              <h3 className="text-2xl font-extrabold text-black dark:text-white flex items-center gap-2">
-                <span className="w-8 h-8 bg-black dark:bg-white text-white dark:text-black rounded-lg flex items-center justify-center text-sm">2</span>
-                Short Answer (Application)
+            <section className="space-y-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-3">
+                <span className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center text-sm font-bold">2</span>
+                Short Answer Questions
               </h3>
-              <div className="grid gap-5">
+              <div className="grid gap-6">
                 {test?.shortAnswers?.map((q: any, i: number) => (
-                  <div key={i} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 space-y-5 transition-colors shadow-sm">
-                    <p className="font-bold text-lg text-black dark:text-white">{i+1}. {q.question}</p>
-                    <div className="pt-4 border-t border-gray-200 dark:border-gray-800 text-sm">
-                      <h4 className="font-bold text-black dark:text-white mb-2 uppercase text-xs tracking-wide">Required Key Points:</h4>
-                      <div className="prose prose-black dark:prose-invert max-w-none text-gray-600 dark:text-gray-400">
+                  <div key={i} className="p-6 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 space-y-5 transition-colors shadow-sm">
+                    <p className="font-semibold text-lg text-gray-800 dark:text-gray-200">{i+1}. {q.question}</p>
+                    <div className="pt-4 border-t border-gray-100 dark:border-gray-800 text-sm bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-lg">
+                      <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2 text-xs uppercase tracking-wide">Grading Rubric</h4>
+                      <div className="prose prose-blue dark:prose-invert max-w-none text-gray-600 dark:text-gray-400 text-sm">
                         <ReactMarkdown>{q.rubric}</ReactMarkdown>
                       </div>
                     </div>

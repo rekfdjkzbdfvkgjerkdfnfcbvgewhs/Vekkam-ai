@@ -45,38 +45,34 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
         <button 
           onClick={onClose} 
-          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-black dark:hover:text-white transition-colors"
+          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
-          <X size={24} />
+          <X size={20} />
         </button>
 
         <div className="p-10 pt-12">
-          <div className="flex justify-center mb-8">
-            <img 
-              src="https://vekkam.wordpress.com/wp-content/uploads/2025/05/uniqorn.png?w=88&h=50" 
-              alt="Vekkam Logo" 
-              className="h-12 w-auto dark:invert" 
-            />
+          <div className="mb-6 text-center">
+             <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Vekkam</span>
           </div>
 
-          <h2 className="text-3xl font-black text-black dark:text-white text-center mb-2 tracking-tight uppercase">
-            {mode === 'login' ? 'Welcome Back' : 'Join Vekkam'}
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white text-center mb-2">
+            {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h2>
-          <p className="text-gray-500 text-center mb-8 text-sm font-medium">
+          <p className="text-gray-500 text-center mb-8 text-sm">
             {mode === 'login' 
-              ? 'Enter your credentials to access your workspace' 
-              : 'Create your account to start outlearning your syllabus'}
+              ? 'Enter your details to access your workspace' 
+              : 'Join to start studying smarter'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
               <div className="relative">
                 <div className="absolute left-4 top-3.5 text-gray-400">
-                  <User size={20} />
+                  <User size={18} />
                 </div>
                 <input
                   required
@@ -84,14 +80,14 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                   placeholder="Full Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 focus:border-blue-500 outline-none transition-all text-sm"
                 />
               </div>
             )}
 
             <div className="relative">
               <div className="absolute left-4 top-3.5 text-gray-400">
-                <Mail size={20} />
+                <Mail size={18} />
               </div>
               <input
                 required
@@ -99,13 +95,13 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                 placeholder="Email Address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 focus:border-blue-500 outline-none transition-all text-sm"
               />
             </div>
 
             <div className="relative">
               <div className="absolute left-4 top-3.5 text-gray-400">
-                <Lock size={20} />
+                <Lock size={18} />
               </div>
               <input
                 required
@@ -113,42 +109,42 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 focus:border-blue-500 outline-none transition-all text-sm"
               />
             </div>
 
             {error && (
-              <div className="p-4 bg-gray-50 dark:bg-gray-900 border border-black dark:border-white rounded-lg text-black dark:text-white text-xs font-bold text-center animate-in slide-in-from-top-2">
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-xs font-medium text-center animate-in slide-in-from-top-2">
                 {error}
               </div>
             )}
 
             <button
               disabled={loading}
-              className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-lg font-bold text-lg hover:opacity-80 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 uppercase tracking-wide"
+              className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
             >
               {loading ? (
-                <Loader2 className="animate-spin" />
+                <Loader2 size={18} className="animate-spin" />
               ) : (
                 <>
-                  {mode === 'login' ? 'Log In' : 'Create Account'}
-                  <ArrowRight size={20} />
+                  {mode === 'login' ? 'Sign In' : 'Sign Up'}
+                  <ArrowRight size={16} />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-8 text-center">
+          <div className="mt-6 text-center">
             <button 
               onClick={() => {
                 setMode(mode === 'login' ? 'signup' : 'login');
                 setError(null);
               }}
-              className="text-sm font-bold text-gray-500 hover:text-black dark:hover:text-white transition-colors uppercase tracking-widest text-xs"
+              className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors"
             >
               {mode === 'login' 
                 ? "Don't have an account? Create one" 
-                : "Already have an account? Log in"}
+                : "Already have an account? Sign in"}
             </button>
           </div>
         </div>
