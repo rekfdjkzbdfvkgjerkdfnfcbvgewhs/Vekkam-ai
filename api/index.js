@@ -10,11 +10,11 @@ app.use(cors());
 // Multer will handle the body parsing for file uploads.
 app.use(express.json({ limit: '50mb' })); // Keep for non-file JSON requests
 
-// GoogleGenAI instance for multimodal extraction (using default API_KEY, typically for Gemini)
-// These instances are created here, but their API key presence will be validated before use in functions.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const geminiFallbackAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
-const llamaFallbackAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY });
+// GoogleGenAI instances are now instantiated directly within the functions that use them,
+// ensuring API keys are checked and used at the point of call.
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); // REMOVED
+// const geminiFallbackAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY }); // REMOVED
+// const llamaFallbackAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY }); // REMOVED
 
 
 const LLM_PRIMARY_URL = "https://inference-llm.onrender.com/generate";
@@ -51,7 +51,9 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
       throw new Error("GEMINI_KEY environment variable is not set for forced fallback.");
     }
     try {
-      const response = await geminiFallbackAI.models.generateContent({
+      // Instantiate Gemini client here
+      const geminiAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+      const response = await geminiAI.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: fullPrompt,
         config: { systemInstruction: systemInstruction }
@@ -98,7 +100,9 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
     console.warn(`[${new Date().toISOString()}] GEMINI_KEY environment variable is not set. Skipping Gemini fallback.`);
   } else {
     try {
-      const response = await geminiFallbackAI.models.generateContent({
+      // Instantiate Gemini client here
+      const geminiAI = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+      const response = await geminiAI.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: fullPrompt,
         config: { systemInstruction: systemInstruction }
@@ -119,7 +123,9 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
     console.warn(`[${new Date().toISOString()}] LLAMA_KEY environment variable is not set. Skipping Llama fallback.`);
   } else {
     try {
-      const response = await llamaFallbackAI.models.generateContent({
+      // Instantiate Llama client here
+      const llamaAI = new GoogleGenAI({ apiKey: process.env.LLAMA_KEY });
+      const response = await llamaAI.models.generateContent({
         model: 'gemini-3-flash-preview', // Assuming LLAMA_KEY points to another Gemini endpoint
         contents: fullPrompt,
         config: { systemInstruction: systemInstruction }
@@ -146,6 +152,8 @@ async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
     throw new Error("API_KEY environment variable is not set for multimodal extraction.");
   }
 
+  // Instantiate multimodal AI client here
+  const multimodalAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const base64Data = buffer.toString('base64');
   const isAudio = mimeType.startsWith('audio/');
   const modelName = isAudio
@@ -153,7 +161,7 @@ async function _extractTextFromGemini(buffer, mimeType, instructionPrompt) {
     : 'gemini-3-flash-preview'; // For image/PDF extraction
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await multimodalAI.models.generateContent({
       model: modelName,
       contents: {
         parts: [
