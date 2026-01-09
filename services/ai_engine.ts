@@ -79,23 +79,54 @@ export const generateBattleQuiz = async (content: string): Promise<QuizQuestion[
 // --- RAG PIPELINE ---
 
 /**
+ * Helper to extract keywords from a string.
+ */
+const extractKeywords = (text: string): string[] => {
+  return text.toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !['what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how', 'tell', 'show', 'give'].includes(w));
+};
+
+/**
  * A lightweight client-side RAG (Retrieval Augmented Generation) heuristic.
  * It ranks text chunks based on keyword overlap with the user query.
+ * 
+ * UPGRADE: Now accepts primary and secondary keyword sets for weighted search.
  */
-const getRelevantContext = (query: string, sources: { type: string, content: string, id: string }[], limitTokenCount = 4000): string => {
-  const keywords = query.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
-  if (keywords.length === 0) return sources.slice(0, 3).map(s => s.content).join('\n\n');
+const getRelevantContext = (
+  primaryKeywords: string[], 
+  secondaryKeywords: string[], 
+  sources: { type: string, content: string, id: string }[], 
+  limitTokenCount = 4000
+): string => {
+  
+  if (primaryKeywords.length === 0 && secondaryKeywords.length === 0) {
+    return sources.slice(0, 3).map(s => s.content).join('\n\n');
+  }
 
   // Score sources
   const scored = sources.map(source => {
     let score = 0;
     const lowerContent = source.content.toLowerCase();
-    keywords.forEach(kw => {
-      // Simple term frequency check
+    
+    // Primary keywords (Current Query) - High Weight (3x)
+    primaryKeywords.forEach(kw => {
       const regex = new RegExp(`\\b${kw}\\b`, 'gi');
       const count = (lowerContent.match(regex) || []).length;
-      score += count * (source.type === 'active_note' ? 2 : 1); // Weight active notes higher
+      score += count * 3;
     });
+
+    // Secondary keywords (History Context) - Low Weight (1x)
+    secondaryKeywords.forEach(kw => {
+      const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+      const count = (lowerContent.match(regex) || []).length;
+      score += count * 1; 
+    });
+
+    // Boost Active Notes
+    if (source.type === 'active_note') score *= 1.5;
+
     return { ...source, score };
   });
 
@@ -107,7 +138,8 @@ const getRelevantContext = (query: string, sources: { type: string, content: str
   let currentTokens = 0;
   
   for (const item of scored) {
-    if (item.score === 0 && context.length > 500) continue; // Skip irrelevant stuff if we have some context
+    // Threshold: Ignore completely irrelevant stuff unless we have very little context
+    if (item.score === 0 && context.length > 1000) continue; 
     
     // Approx token count (4 chars per token)
     const tokens = item.content.length / 4;
@@ -117,7 +149,7 @@ const getRelevantContext = (query: string, sources: { type: string, content: str
     currentTokens += tokens;
   }
 
-  return context || "No relevant context found in your notes.";
+  return context || "No highly relevant context found, but here is general knowledge.";
 };
 
 /**
@@ -126,6 +158,7 @@ const getRelevantContext = (query: string, sources: { type: string, content: str
  */
 export const queryStrategyTA = async (
   query: string, 
+  chatHistory: { role: string, content: string }[],
   allSessions: { id: string, title: string, notes: NoteBlock[] }[],
   studyGroups: StudyGroup[],
   badges: Badge[]
@@ -147,8 +180,8 @@ export const queryStrategyTA = async (
 
   // Flatten Study Group Messages (Recent ones)
   studyGroups.forEach(group => {
-    // Only take last 10 messages to keep context fresh
-    const recentMsgs = group.messages?.slice(-10) || [];
+    // Only take last 15 messages
+    const recentMsgs = group.messages?.slice(-15) || [];
     if (recentMsgs.length > 0) {
       const conversation = recentMsgs.map(m => `${m.senderName}: ${m.content}`).join('\n');
       rawSources.push({
@@ -159,7 +192,7 @@ export const queryStrategyTA = async (
     }
   });
 
-  // Flatten Badges (Performance History)
+  // Flatten Badges
   if (badges.length > 0) {
     const badgeSummary = badges.map(b => `Earned '${b.title}' for ${b.metadata.topic} on ${new Date(b.achievedAt).toLocaleDateString()}`).join('\n');
     rawSources.push({
@@ -170,23 +203,37 @@ export const queryStrategyTA = async (
   }
 
   // 2. Retrieval Phase
-  const relevantContext = getRelevantContext(query, rawSources);
+  // Extract keywords from current query
+  const currentKeywords = extractKeywords(query);
+  
+  // Extract keywords from the LAST user message in history (if exists) for continuity
+  // We only look at the immediate predecessor to avoid drifting context too much
+  const lastUserMessage = [...chatHistory].reverse().find(m => m.role === 'user');
+  const historyKeywords = lastUserMessage ? extractKeywords(lastUserMessage.content) : [];
+
+  const relevantContext = getRelevantContext(currentKeywords, historyKeywords, rawSources);
+
+  // Format history for context window
+  const historyText = chatHistory.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Strategy TA'}: ${m.content}`).join('\n');
 
   // 3. Generation Phase
   const prompt = `
     You are the Strategy TA, a hyper-aware study companion linked to the user's entire learning database.
     
-    User Query: "${query}"
-
-    Context (Retrieved via RAG):
+    CONTEXT FROM RAG (Notes, Chats, Achievements):
     ${relevantContext}
 
-    Instructions:
-    1. Answer the query specifically using the provided context.
-    2. If the answer is found in a specific note, reference it explicitly (e.g., "As seen in your Thermodynamics notes...").
-    3. If the answer is found in a group chat, mention it (e.g., "Your group 'Econ 101' was discussing this...").
-    4. If the context is missing, admit it, but try to answer based on general knowledge while flagging it as "External Knowledge".
-    5. Be concise, motivating, and exam-focused.
+    CONVERSATION HISTORY:
+    ${historyText}
+
+    CURRENT USER QUERY: "${query}"
+
+    INSTRUCTIONS:
+    1. Answer the query specifically using the retrieved context and history.
+    2. Maintain conversational continuity. If the user refers to "it" or "that", use the history to resolve the reference.
+    3. If the answer is found in a specific note, reference it (e.g., "As seen in 'Unit 3'...").
+    4. If the answer is found in a group chat, mention it (e.g., "Your group discussed this...").
+    5. Be decisive and exam-focused. Do not waffle.
     6. Use Markdown for formatting.
   `;
 
@@ -201,12 +248,11 @@ export const queryStrategyTA = async (
   return { text: answer, sources: usedSourceNames };
 };
 
-// Legacy support (can remove if fully refactored, but keeping for safety)
+// Legacy support
 export const localAnswerer = async (query: string, context: string) => {
    return callQwen(`Context: ${context}\n\nQuery: ${query}`);
 };
 
-// ... existing export/import code for extractTextFromFile, chunkText etc ...
 export const extractTextFromFile = async (file: File): Promise<string> => {
   if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
     return new Promise((resolve, reject) => {
@@ -219,9 +265,6 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
   return ""; 
 };
 
-export const chunkText = (text: string, sourceId: string, size: number = 500, overlap: number = 50): Chunk[] => {
-   // Legacy placeholder
-   return [];
-};
+export const chunkText = (text: string, sourceId: string, size: number = 500, overlap: number = 50): Chunk[] => { return []; };
 export const generateLocalOutline = async (chunks: Chunk[]) => ({ outline: [] });
 export const synthesizeLocalNote = async (topic: string, text: string, instructions: string) => "";

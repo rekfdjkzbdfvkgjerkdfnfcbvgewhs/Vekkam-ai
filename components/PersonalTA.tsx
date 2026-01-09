@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, Loader2, Sparkles, Target, ThumbsUp, ThumbsDown, Check, BrainCircuit, Link, Database } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Sparkles, Target, ThumbsUp, ThumbsDown, Check, BrainCircuit, Link, Database, Trash2, BriefcaseMedical } from 'lucide-react';
 import { Session, StudyGroup, Badge } from '../types';
 import { queryStrategyTA } from '../services/ai_engine';
 import { saveLearningFeedback } from '../services/firebase';
@@ -40,12 +40,16 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
     const userMsg = input;
     const userId = `msg_${Date.now()}`;
     setInput('');
+    
+    // Prepare history from existing messages
+    const history = messages.map(m => ({ role: m.role, content: m.content }));
+
     setMessages(prev => [...prev, { role: 'user', content: userMsg, id: userId }]);
     setLoading(true);
 
     try {
-      // Use the unified RAG function
-      const { text, sources } = await queryStrategyTA(userMsg, sessions, studyGroups, userBadges);
+      // Use the unified RAG function with chat history
+      const { text, sources } = await queryStrategyTA(userMsg, history, sessions, studyGroups, userBadges);
       
       setMessages(prev => [...prev, { 
         role: 'assistant', 
@@ -61,6 +65,12 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
       }]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    if (window.confirm("Clear chat history? This will reset the analyst's short-term memory.")) {
+      setMessages([]);
     }
   };
 
@@ -80,39 +90,45 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
   ];
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-950 transition-colors">
+    <div className="flex flex-col h-full bg-white dark:bg-black transition-colors">
       {/* Header */}
-      <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-950 z-10 shadow-sm">
+      <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-black z-10">
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <BrainCircuit className="text-blue-600" /> Strategy TA
+          <h2 className="text-2xl font-extrabold text-black dark:text-white flex items-center gap-2">
+            <BriefcaseMedical className="text-black dark:text-white" /> Risk Analyst
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Connected to {sessions.length} sessions, {studyGroups.length} groups.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wide">Connected to {sessions.length} units, {studyGroups.length} war rooms.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded-full flex items-center gap-1 animate-pulse">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div> RAG Active
+          {messages.length > 0 && (
+            <button 
+              onClick={clearChat}
+              className="p-2 text-gray-400 hover:text-black dark:hover:text-white rounded-lg transition-colors"
+              title="Clear Context"
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
+          <div className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-black dark:text-white text-xs font-bold rounded-full flex items-center gap-1">
+            <div className="w-2 h-2 bg-black dark:bg-white rounded-full"></div> RAG Active
           </div>
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gray-50/50 dark:bg-gray-900/50">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gray-50 dark:bg-gray-900">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-8 max-w-md mx-auto">
             <div className="relative">
-              <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/20 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 animate-bounce-slow">
-                <Sparkles size={32} />
-              </div>
-              <div className="absolute -bottom-2 -right-2 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                <Database size={16} className="text-purple-500" />
+              <div className="w-20 h-20 bg-white dark:bg-black border border-black dark:border-white rounded-none flex items-center justify-center text-black dark:text-white animate-bounce-slow">
+                <BriefcaseMedical size={32} />
               </div>
             </div>
             
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">I know everything you've studied.</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
-                I'm linked to your notes, your study groups, and your quiz results. Ask me anything to connect the dots.
+              <h3 className="text-xl font-bold text-black dark:text-white">I know what you're afraid of.</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed font-medium">
+                I'm linked to your notes, your study groups, and your failed quizzes. Ask me where you are weakest.
               </p>
             </div>
 
@@ -121,7 +137,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                 <button
                   key={idx}
                   onClick={() => setInput(chip)}
-                  className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all text-left flex items-center justify-between group"
+                  className="px-4 py-3 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white transition-all text-left flex items-center justify-between group"
                 >
                   {chip} <Send size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
@@ -134,15 +150,15 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
               <div className={`max-w-[85%] flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                 
                 {/* Message Bubble */}
-                <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                <div className={`p-4 rounded-xl shadow-sm text-sm leading-relaxed font-medium ${
                   m.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-br-none' 
-                    : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none'
+                    ? 'bg-black text-white dark:bg-white dark:text-black rounded-br-none' 
+                    : 'bg-white dark:bg-black border border-gray-200 dark:border-gray-700 text-black dark:text-gray-200 rounded-tl-none'
                 }`}>
                    {m.role === 'user' ? (
                      <p className="whitespace-pre-wrap">{m.content}</p>
                    ) : (
-                     <div className="prose prose-sm prose-blue dark:prose-invert max-w-none">
+                     <div className="prose prose-sm prose-black dark:prose-invert max-w-none">
                        <ReactMarkdown>{m.content}</ReactMarkdown>
                      </div>
                    )}
@@ -156,7 +172,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                     {m.sources && m.sources.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {m.sources.map((src, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                          <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-200 dark:bg-gray-800 rounded text-[10px] font-medium text-gray-600 dark:text-gray-400">
                             <Link size={8} /> {src}
                           </span>
                         ))}
@@ -168,21 +184,21 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                       <div className="flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity duration-200">
                         <button 
                           onClick={() => submitFeedback(i, 1)}
-                          className="p-1 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
+                          className="p-1 text-gray-400 hover:text-black dark:hover:text-white transition-colors"
                           title="Helpful"
                         >
                           <ThumbsUp size={12} />
                         </button>
                         <button 
                           onClick={() => submitFeedback(i, -1)}
-                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                          className="p-1 text-gray-400 hover:text-black dark:hover:text-white transition-colors"
                           title="Not Helpful"
                         >
                           <ThumbsDown size={12} />
                         </button>
                       </div>
                     ) : (
-                       <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+                       <div className="flex items-center gap-1 text-[10px] font-bold text-black dark:text-white uppercase tracking-widest">
                          <Check size={10} /> Feedback Recorded
                        </div>
                     )}
@@ -196,10 +212,10 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
         {/* Loading Indicator */}
         {loading && (
           <div className="flex justify-start animate-in fade-in">
-            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 rounded-2xl rounded-tl-none flex items-center gap-3 shadow-sm">
-              <Loader2 size={18} className="animate-spin text-blue-600 dark:text-blue-400" />
+            <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 p-4 rounded-xl rounded-tl-none flex items-center gap-3 shadow-sm">
+              <Loader2 size={18} className="animate-spin text-black dark:text-white" />
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-bold text-gray-900 dark:text-white">Connecting dots...</span>
+                <span className="text-xs font-bold text-black dark:text-white">Connecting dots...</span>
                 <span className="text-[10px] text-gray-400">Scanning notes, chats, and history</span>
               </div>
             </div>
@@ -209,28 +225,27 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800">
+      <div className="p-4 bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-4xl mx-auto relative group">
-          <div className="absolute inset-0 bg-blue-100 dark:bg-blue-900/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask Strategy TA (e.g., 'How does Unit 1 relate to the chat in Econ Group?')"
-            className="relative w-full pl-5 pr-14 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-xl focus:border-blue-500 dark:focus:border-blue-500 outline-none transition-all font-medium shadow-inner"
+            placeholder="Ask Risk Analyst (e.g., 'Do I know enough about Unit 3 to pass?')"
+            className="relative w-full pl-5 pr-14 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:border-black dark:focus:border-white outline-none transition-all font-medium"
             disabled={loading}
           />
           <button 
             onClick={handleSend}
             disabled={!input.trim() || loading}
-            className="absolute right-2 top-2 p-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-md"
+            className="absolute right-2 top-2 p-2.5 bg-black dark:bg-white text-white dark:text-black rounded-md hover:opacity-80 active:scale-95 transition-all disabled:opacity-50"
           >
             <Send size={18} />
           </button>
         </div>
-        <p className="text-center text-[10px] text-gray-400 mt-3">
-          Strategy TA is powered by a RAG pipeline connecting your Notes, Group Chats, and Achievements.
+        <p className="text-center text-[10px] text-gray-400 mt-3 font-medium">
+          Powered by a RAG pipeline connecting your Notes, War Rooms, and Survival Records.
         </p>
       </div>
     </div>

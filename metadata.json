@@ -1,6 +1,6 @@
 {
-  "name": "Vekkam Engine",
-  "description": "A comprehensive AI-powered study platform designed to help students master any syllabus quickly through personalized notes, mock tests, and a mastery skill tree.",
+  "name": "Vekkam - Exam Insurance",
+  "description": "The only tool that tells you exactly what you’re going to fail—before the exam does. Stop studying. Start clearing.",
   "requestFramePermissions": [
     "microphone"
   ]

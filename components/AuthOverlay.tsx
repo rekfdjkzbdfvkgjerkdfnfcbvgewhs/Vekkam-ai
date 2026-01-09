@@ -45,26 +45,28 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/60 backdrop-blur-md p-4 animate-in fade-in">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
         <button 
           onClick={onClose} 
-          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-900 transition-colors rounded-full hover:bg-gray-100"
+          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-black dark:hover:text-white transition-colors"
         >
           <X size={24} />
         </button>
 
         <div className="p-10 pt-12">
           <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-blue-200">
-              V
-            </div>
+            <img 
+              src="https://vekkam.wordpress.com/wp-content/uploads/2025/05/uniqorn.png?w=88&h=50" 
+              alt="Vekkam Logo" 
+              className="h-12 w-auto dark:invert" 
+            />
           </div>
 
-          <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-2">
+          <h2 className="text-3xl font-black text-black dark:text-white text-center mb-2 tracking-tight uppercase">
             {mode === 'login' ? 'Welcome Back' : 'Join Vekkam'}
           </h2>
-          <p className="text-gray-500 text-center mb-8 text-sm">
+          <p className="text-gray-500 text-center mb-8 text-sm font-medium">
             {mode === 'login' 
               ? 'Enter your credentials to access your workspace' 
               : 'Create your account to start outlearning your syllabus'}
@@ -82,7 +84,7 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                   placeholder="Full Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all font-medium"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
                 />
               </div>
             )}
@@ -97,7 +99,7 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                 placeholder="Email Address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all font-medium"
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
               />
             </div>
 
@@ -111,19 +113,19 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all font-medium"
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-black dark:text-white rounded-lg focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white outline-none transition-all font-medium"
               />
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold text-center animate-in slide-in-from-top-2">
+              <div className="p-4 bg-gray-50 dark:bg-gray-900 border border-black dark:border-white rounded-lg text-black dark:text-white text-xs font-bold text-center animate-in slide-in-from-top-2">
                 {error}
               </div>
             )}
 
             <button
               disabled={loading}
-              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-blue-700 hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-lg font-bold text-lg hover:opacity-80 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 uppercase tracking-wide"
             >
               {loading ? (
                 <Loader2 className="animate-spin" />
@@ -142,7 +144,7 @@ const AuthOverlay: React.FC<AuthOverlayProps> = ({ initialMode, onClose }) => {
                 setMode(mode === 'login' ? 'signup' : 'login');
                 setError(null);
               }}
-              className="text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors"
+              className="text-sm font-bold text-gray-500 hover:text-black dark:hover:text-white transition-colors uppercase tracking-widest text-xs"
             >
               {mode === 'login' 
                 ? "Don't have an account? Create one" 
