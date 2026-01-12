@@ -20,11 +20,7 @@ app.use(express.json({ limit: '50mb' }));
 const HF_TOKEN = process.env.HF_TOKEN;
 const HF_MODEL_ID = "Sambit-Mishra/vekkam-v0";
 
-// 2. Secondary: Llama API
-const LLAMA_API_KEY = process.env.LLAMA_API_KEY;
-const LLAMA_API_URL = process.env.LLAMA_API_URL || "https://inference-llm.onrender.com/generate";
-
-// 3. Tertiary: Gemini API
+// 2. Secondary: Gemini API
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Strategy 4 & 5: Learned Compression via System Prompting
@@ -97,46 +93,7 @@ async function callHuggingFaceVekkam(prompt, systemInstruction) {
 }
 
 /**
- * 2. Secondary: Llama API (Inference Endpoint)
- */
-async function callLlamaAPI(prompt, systemInstruction) {
-  console.log(`[${new Date().toISOString()}] Calling Llama API (Secondary)...`);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const headers = { "Content-Type": "application/json" };
-    if (LLAMA_API_KEY) {
-      headers["Authorization"] = `Bearer ${LLAMA_API_KEY}`;
-    }
-
-    const r = await fetch(LLAMA_API_URL, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify({ 
-        prompt: `${systemInstruction}\n\nTask:\n${prompt}`,
-        model: "llama-3.3-70b-instruct"
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    if (r.ok) {
-      const data = await r.json();
-      const text = data.text || data.response || data.generated_text || "";
-      if (!text) throw new Error("Empty response from Llama");
-      return text;
-    } else {
-      throw new Error(`Llama API failed status: ${r.status}`);
-    }
-  } catch (error) {
-    clearTimeout(timeout);
-    throw error;
-  }
-}
-
-/**
- * 3. Tertiary: Gemini API (Google GenAI SDK)
+ * 2. Secondary: Gemini API (Google GenAI SDK)
  */
 async function callGeminiAPI(prompt, systemInstruction) {
   if (!GEMINI_API_KEY) {
@@ -147,7 +104,7 @@ async function callGeminiAPI(prompt, systemInstruction) {
   const contents = `${systemInstruction}\n\nTask:\n${prompt}`;
 
   try {
-    console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview (Tertiary)...`);
+    console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview (Secondary)...`);
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-preview',
       contents: contents,
@@ -182,19 +139,12 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
   } catch (hfError) {
     console.warn(`[${new Date().toISOString()}] Primary (HF/Vekkam) failed: ${hfError.message}`);
     
-    // 2. Try Llama API
+    // 2. Try Gemini API directly
     try {
-      return await callLlamaAPI(prompt, systemInstruction);
-    } catch (llamaError) {
-      console.warn(`[${new Date().toISOString()}] Secondary (Llama) failed: ${llamaError.message}`);
-      
-      // 3. Try Gemini API
-      try {
-        return await callGeminiAPI(prompt, systemInstruction);
-      } catch (geminiError) {
-        console.error(`[${new Date().toISOString()}] Critical: All LLM tiers failed.`);
-        throw new Error("Service unavailable. All AI models are currently down.");
-      }
+      return await callGeminiAPI(prompt, systemInstruction);
+    } catch (geminiError) {
+      console.error(`[${new Date().toISOString()}] Critical: All LLM tiers failed.`);
+      throw new Error("Service unavailable. All AI models are currently down.");
     }
   }
 }
