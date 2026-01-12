@@ -1,5 +1,6 @@
 
 import { Chunk, NoteBlock, QuizQuestion, StudyGroup, Badge } from "../types";
+import { logDataInteraction } from "./firebase";
 
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
@@ -76,7 +77,7 @@ export const generateBattleQuiz = async (content: string): Promise<QuizQuestion[
   return data.questions;
 };
 
-// --- RAG PIPELINE ---
+// --- RAG PIPELINE OPTIMIZATIONS ---
 
 /**
  * Helper to extract keywords from a string.
@@ -89,10 +90,25 @@ const extractKeywords = (text: string): string[] => {
 };
 
 /**
- * A lightweight client-side RAG (Retrieval Augmented Generation) heuristic.
- * It ranks text chunks based on keyword overlap with the user query.
+ * Strategy 1: Semantic Deduplication (Approximation)
+ * Calculates Jaccard Similarity between two text chunks based on unigrams/bigrams.
+ * Returns a score between 0 and 1.
+ */
+const jaccardSimilarity = (str1: string, str2: string): number => {
+  const set1 = new Set(str1.toLowerCase().split(/\s+/));
+  const set2 = new Set(str2.toLowerCase().split(/\s+/));
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  return intersection.size / union.size;
+};
+
+/**
+ * A client-side RAG heuristic with Deduplication and Context Pruning.
  * 
- * UPGRADE: Now accepts primary and secondary keyword sets for weighted search.
+ * OPTIMIZATIONS:
+ * 1. Weighted scoring (Primary vs Secondary keywords).
+ * 2. Semantic Deduplication (removes >0.85 similarity chunks).
+ * 3. Token budgeting.
  */
 const getRelevantContext = (
   primaryKeywords: string[], 
@@ -105,7 +121,7 @@ const getRelevantContext = (
     return sources.slice(0, 3).map(s => s.content).join('\n\n');
   }
 
-  // Score sources
+  // 1. Score sources
   const scored = sources.map(source => {
     let score = 0;
     const lowerContent = source.content.toLowerCase();
@@ -130,22 +146,31 @@ const getRelevantContext = (
     return { ...source, score };
   });
 
-  // Sort by score descending
+  // 2. Sort by score descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Construct context until limit
+  // 3. Deduplication & Construction
   let context = "";
   let currentTokens = 0;
+  const selectedContents: string[] = [];
   
   for (const item of scored) {
-    // Threshold: Ignore completely irrelevant stuff unless we have very little context
+    // Pruning: Ignore completely irrelevant stuff
     if (item.score === 0 && context.length > 1000) continue; 
     
+    // Strategy 1: Deduplication Check
+    // If this chunk is >85% similar to something we already picked, skip it.
+    const isDuplicate = selectedContents.some(existing => jaccardSimilarity(existing, item.content) > 0.85);
+    if (isDuplicate) continue;
+
     // Approx token count (4 chars per token)
     const tokens = item.content.length / 4;
     if (currentTokens + tokens > limitTokenCount) break;
     
-    context += `[SOURCE: ${item.type.toUpperCase()} - ${item.id}]\n${item.content}\n\n`;
+    // Structural formatting for context (Strategy 2)
+    context += `[SOURCE: ${item.type.toUpperCase()} - ${item.id}]\n${item.content.trim()}\n\n`;
+    
+    selectedContents.push(item.content);
     currentTokens += tokens;
   }
 
@@ -155,6 +180,7 @@ const getRelevantContext = (
 /**
  * The Unified RAG Query function.
  * Aggregates data from Notes, Study Groups, and Badges to answer the user's question.
+ * Logs structured data to secondary DB using parsed Markdown sections.
  */
 export const queryStrategyTA = async (
   query: string, 
@@ -207,7 +233,6 @@ export const queryStrategyTA = async (
   const currentKeywords = extractKeywords(query);
   
   // Extract keywords from the LAST user message in history (if exists) for continuity
-  // We only look at the immediate predecessor to avoid drifting context too much
   const lastUserMessage = [...chatHistory].reverse().find(m => m.role === 'user');
   const historyKeywords = lastUserMessage ? extractKeywords(lastUserMessage.content) : [];
 
@@ -217,35 +242,77 @@ export const queryStrategyTA = async (
   const historyText = chatHistory.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Strategy TA'}: ${m.content}`).join('\n');
 
   // 3. Generation Phase
+  // Strategy 4: Reasoning Sketches Prompting
   const prompt = `
-    You are the Strategy TA, a hyper-aware study companion linked to the user's entire learning database.
+    You are the Strategy TA, a hyper-aware study companion.
     
-    CONTEXT FROM RAG (Notes, Chats, Achievements):
+    CONTEXT:
     ${relevantContext}
 
-    CONVERSATION HISTORY:
+    HISTORY:
     ${historyText}
 
-    CURRENT USER QUERY: "${query}"
+    QUERY: "${query}"
 
     INSTRUCTIONS:
-    1. Answer the query specifically using the retrieved context and history.
-    2. Maintain conversational continuity. If the user refers to "it" or "that", use the history to resolve the reference.
-    3. If the answer is found in a specific note, reference it (e.g., "As seen in 'Unit 3'...").
-    4. If the answer is found in a group chat, mention it (e.g., "Your group discussed this...").
-    5. Be decisive and exam-focused. Do not waffle.
-    6. Use Markdown for formatting.
+    Structure your response efficiently using the following format. 
+    USE 'REASONING SKETCHES' for the Explanation (Strategy 4): Use bullet logic, arrows (→), and symbolic placeholders instead of verbose prose.
+    
+    ## Explanation
+    (Use bullet logic, causal arrows, and dense reasoning sketches here.)
+
+    ## Final Answer
+    (A concise summary or direct answer)
+
+    ## Quick Check
+    (A common mistake to avoid or a pro-tip)
   `;
 
-  const answer = await callQwen(prompt);
+  const rawResponse = await callQwen(prompt);
   
+  // 4. Parsing Phase (Extract sections for Logging)
+  let explanation = rawResponse;
+  let finalAnswer = "";
+  let commonMistake = "";
+
+  // Helper to extract section content
+  const extractSection = (text: string, header: string, nextHeader?: string) => {
+    const start = text.indexOf(header);
+    if (start === -1) return null;
+    let end = text.length;
+    if (nextHeader) {
+      const nextIndex = text.indexOf(nextHeader, start + header.length);
+      if (nextIndex !== -1) end = nextIndex;
+    }
+    return text.substring(start + header.length, end).trim();
+  };
+
+  const exp = extractSection(rawResponse, "## Explanation", "## Final Answer");
+  if (exp) explanation = exp;
+
+  const ans = extractSection(rawResponse, "## Final Answer", "## Quick Check");
+  if (ans) finalAnswer = ans;
+
+  const mist = extractSection(rawResponse, "## Quick Check");
+  if (mist) commonMistake = mist;
+
+  // 5. Logging Phase (Fire and forget)
+  logDataInteraction({
+    question: query,
+    relevant_context: relevantContext,
+    explanation: explanation,
+    final_answer: finalAnswer,
+    common_mistake: commonMistake
+  });
+
   // Extract source names for UI
   const usedSourceNames = rawSources
     .filter(s => relevantContext.includes(s.id))
     .map(s => s.id)
     .slice(0, 3); // Top 3 sources
 
-  return { text: answer, sources: usedSourceNames };
+  // Return the raw response so the UI gets the full markdown structure which is readable
+  return { text: rawResponse, sources: usedSourceNames };
 };
 
 // Legacy support

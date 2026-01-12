@@ -27,6 +27,7 @@ import {
 import type { Firestore } from "firebase/firestore";
 import { UserData, Session, Badge, StudyGroup, GroupMessage, NoteBlock } from "../types";
 
+// --- PRIMARY APP (Core User Data) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAEZpRngu0QxJ1e1oc5X0d-w2pN78Nu4aU",
   authDomain: "vekkam-ai.firebaseapp.com",
@@ -41,6 +42,52 @@ const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) 
 
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
+
+// --- SECONDARY APP (Data Logging) ---
+const dataFirebaseConfig = {
+  apiKey: "AIzaSyBShVJcC6qekqgyfIPor-iQ-6P-2ilUkrI",
+  authDomain: "data-15805.firebaseapp.com",
+  projectId: "data-15805",
+  storageBucket: "data-15805.firebasestorage.app",
+  messagingSenderId: "613395923553",
+  appId: "1:613395923553:web:7288ead0e01fd611b1e020",
+  measurementId: "G-VTHQT014VG"
+};
+
+// Initialize secondary app safely
+let dataApp: FirebaseApp;
+const dataAppName = "vekkamDataStore";
+
+if (getApps().some(app => app.name === dataAppName)) {
+  dataApp = getApp(dataAppName);
+} else {
+  dataApp = initializeApp(dataFirebaseConfig, dataAppName);
+}
+
+const dataDb: Firestore = getFirestore(dataApp);
+
+/**
+ * Logs structured interaction data to the separate Data Firestore.
+ * Contains NO User ID or PII.
+ */
+export const logDataInteraction = async (data: {
+  question: string;
+  relevant_context: string;
+  explanation: string;
+  final_answer: string;
+  common_mistake: string;
+}) => {
+  try {
+    const logsRef = collection(dataDb, "interactions");
+    await addDoc(logsRef, {
+      ...data,
+      timestamp: serverTimestamp()
+    });
+  } catch (err) {
+    console.error("Failed to log interaction to secondary DB:", err);
+  }
+};
+
 
 export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
 

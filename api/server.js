@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import { GoogleGenAI } from "@google/genai";
+import { HfInference } from '@huggingface/inference';
 import multer from 'multer';
 import pdf from 'pdf-parse/lib/pdf-parse.js'; 
 import mammoth from 'mammoth';
@@ -13,14 +14,34 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-const LLM_PRIMARY_URL = "https://inference-llm.onrender.com/generate";
-const USE_GEMINI_FALLBACK_FORCE = process.env.USE_GEMINI_FALLBACK === 'true'; 
+// --- Configuration ---
 
+// 1. Primary: Hugging Face (Vekkam V0)
+// The model ID provided: Sambit-Mishra/vekkam-v0
+const HF_TOKEN = process.env.HF_TOKEN;
+const HF_MODEL_ID = "Sambit-Mishra/vekkam-v0";
+
+// 2. Secondary: Llama API
+const LLAMA_API_KEY = process.env.LLAMA_API_KEY;
+const LLAMA_API_URL = process.env.LLAMA_API_URL || "https://inference-llm.onrender.com/generate";
+
+// 3. Tertiary: Gemini API
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Initialize HF Client
+const hf = new HfInference(HF_TOKEN);
+
+// Strategy 4 & 5: Learned Compression via System Prompting
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
 Do not be overly conversational. Be decisive. 
-Focus only on high-yield exam-relevant material. 
-If a concept is fluff, cut it. If it is complex, break it into battle units.
+
+OPTIMIZATION STRATEGIES:
+1. Structural Compression: Kill English, keep meaning. Use structured formats (JSON/Bullets) for facts.
+2. Reasoning Sketches: Use bullet logic (A → B) instead of verbose explanations.
+3. High-Yield Only: If a concept is fluff, cut it.
+
+If a concept is complex, break it into battle units.
 Always prioritize questions as the primary teaching tool.`;
 
 const upload = multer({
@@ -31,33 +52,57 @@ const upload = multer({
 });
 
 /**
- * Utility to call the primary LLM (Llama) or fallback to Gemini.
+ * 1. Primary: Hugging Face Inference (Sambit-Mishra/vekkam-v0)
  */
-async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
-  const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
-  let responseText = '';
-
-  console.log(`[${new Date().toISOString()}] Generative Request (Length: ${fullPrompt.length})`);
-
-  if (USE_GEMINI_FALLBACK_FORCE) {
-    return await callGeminiWithFallback(fullPrompt, systemInstruction);
-  }
+async function callHuggingFaceVekkam(prompt, systemInstruction) {
+  if (!HF_TOKEN) throw new Error("HF_TOKEN environment variable is missing.");
+  
+  console.log(`[${new Date().toISOString()}] Calling Hugging Face (${HF_MODEL_ID})...`);
+  
+  // Note: HF Inference API often expects the prompt to include system instructions 
+  // if the model isn't strictly chat-tuned with a messages array.
+  // We combine them here to ensure the "Ruthless" persona is maintained.
+  const fullInput = `<|system|>\n${systemInstruction}\n<|user|>\n${prompt}\n<|assistant|>\n`;
 
   try {
-    console.log(`[${new Date().toISOString()}] Calling Primary LLM (Llama)...`);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    const result = await hf.textGeneration({
+      model: HF_MODEL_ID,
+      inputs: fullInput,
+      parameters: {
+        max_new_tokens: 1500, // Generous limit for detailed notes
+        return_full_text: false, // Only return the generated part
+        temperature: 0.7,
+        do_sample: true
+      }
+    });
 
+    if (!result.generated_text) throw new Error("Empty response from Hugging Face.");
+    return result.generated_text;
+
+  } catch (error) {
+    throw new Error(`Hugging Face API failed: ${error.message}`);
+  }
+}
+
+/**
+ * 2. Secondary: Llama API (Inference Endpoint)
+ */
+async function callLlamaAPI(prompt, systemInstruction) {
+  console.log(`[${new Date().toISOString()}] Calling Llama API (Secondary)...`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+
+  try {
     const headers = { "Content-Type": "application/json" };
-    if (process.env.LLAMA_KEY) {
-      headers["Authorization"] = `Bearer ${process.env.LLAMA_KEY}`;
+    if (LLAMA_API_KEY) {
+      headers["Authorization"] = `Bearer ${LLAMA_API_KEY}`;
     }
 
-    const r = await fetch(LLM_PRIMARY_URL, {
+    const r = await fetch(LLAMA_API_URL, {
       method: "POST",
       headers: headers,
       body: JSON.stringify({ 
-        prompt: fullPrompt,
+        prompt: `${systemInstruction}\n\nTask:\n${prompt}`,
         model: "llama-3.3-70b-instruct"
       }),
       signal: controller.signal
@@ -66,42 +111,45 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 
     if (r.ok) {
       const data = await r.json();
-      responseText = data.text || data.response || data.generated_text || "";
-      if (responseText) return responseText;
+      const text = data.text || data.response || data.generated_text || "";
+      if (!text) throw new Error("Empty response from Llama");
+      return text;
     } else {
-      console.warn(`[${new Date().toISOString()}] Primary LLM failed status: ${r.status}`);
+      throw new Error(`Llama API failed status: ${r.status}`);
     }
   } catch (error) {
-    console.warn(`[${new Date().toISOString()}] Primary LLM failed: ${error.message}`);
+    clearTimeout(timeout);
+    throw error;
   }
-
-  return await callGeminiWithFallback(fullPrompt, systemInstruction);
 }
 
-async function callGeminiWithFallback(contents, systemInstruction) {
-  if (!process.env.GEMINI_KEY) {
-    throw new Error("GEMINI_KEY environment variable is missing.");
+/**
+ * 3. Tertiary: Gemini API (Google GenAI SDK)
+ */
+async function callGeminiAPI(prompt, systemInstruction) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY environment variable is missing.");
   }
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY });
+  
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const contents = `${systemInstruction}\n\nTask:\n${prompt}`;
 
   try {
-    console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview...`);
+    console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview (Tertiary)...`);
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-preview',
       contents: contents,
-      config: { systemInstruction }
     });
     if (response.text) return response.text;
   } catch (e) {
-    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed. Retrying...`);
+    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed. Retrying with Gemini 3...`);
   }
 
   try {
-    console.log(`[${new Date().toISOString()}] Attempting Gemini 3 Flash Preview (Fallback)...`);
+    console.log(`[${new Date().toISOString()}] Attempting Gemini 3 Flash Preview (Last Resort)...`);
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: contents,
-      config: { systemInstruction }
     });
     return response.text || "No response generated.";
   } catch (e) {
@@ -110,9 +158,37 @@ async function callGeminiWithFallback(contents, systemInstruction) {
 }
 
 /**
+ * Main Orchestrator
+ */
+async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
+  const fullContentLength = prompt.length + systemInstruction.length;
+  console.log(`[${new Date().toISOString()}] Generative Request (Length: ${fullContentLength})`);
+
+  // 1. Try Hugging Face (Vekkam V0)
+  try {
+    return await callHuggingFaceVekkam(prompt, systemInstruction);
+  } catch (hfError) {
+    console.warn(`[${new Date().toISOString()}] Primary (HF/Vekkam) failed: ${hfError.message}`);
+    
+    // 2. Try Llama API
+    try {
+      return await callLlamaAPI(prompt, systemInstruction);
+    } catch (llamaError) {
+      console.warn(`[${new Date().toISOString()}] Secondary (Llama) failed: ${llamaError.message}`);
+      
+      // 3. Try Gemini API
+      try {
+        return await callGeminiAPI(prompt, systemInstruction);
+      } catch (geminiError) {
+        console.error(`[${new Date().toISOString()}] Critical: All LLM tiers failed.`);
+        throw new Error("Service unavailable. All AI models are currently down.");
+      }
+    }
+  }
+}
+
+/**
  * Heuristic RG (Retrieval/Grouping) function to select high-value context.
- * Instead of randomly slicing text, this selects paragraphs with the highest density
- * of "interesting" words (length > 4), ensuring the LLM gets the meat of the content.
  */
 function getSmartContext(text, limit = 6000) {
   if (!text || text.length <= limit) return text;
@@ -126,10 +202,9 @@ function getSmartContext(text, limit = 6000) {
   const paragraphs = text.split(/\n\s*\n/);
   const scored = paragraphs.map((p, index) => {
     const pWords = p.toLowerCase().match(/[a-z]{4,}/g) || [];
-    // Score = Sum of word frequencies / log of length (to favor density but not punish length too much)
     const rawScore = pWords.reduce((acc, w) => acc + (freq[w] || 0), 0);
     const score = pWords.length > 0 ? rawScore / Math.log(pWords.length + 2) : 0;
-    return { text: p, score, index }; // Keep index to maintain flow if needed, though we might reorder
+    return { text: p, score, index }; 
   });
 
   // 3. Select Top Paragraphs until limit
@@ -138,7 +213,6 @@ function getSmartContext(text, limit = 6000) {
   let resultChunks = [];
   let currentLen = 0;
   
-  // Always include the first paragraph (often intro/abstract)
   const firstPara = paragraphs[0];
   if (firstPara) {
     resultChunks.push({ text: firstPara, index: -1 });
@@ -158,7 +232,6 @@ function getSmartContext(text, limit = 6000) {
 }
 
 async function _extractTextLocal(buffer, mimeType) {
-  // ... (extraction logic matches previous, condensed for brevity in this output)
   console.log(`[${new Date().toISOString()}] Extracting: ${mimeType}`);
   try {
     let rawText = "";
@@ -262,7 +335,6 @@ app.post('/api/generate-quiz', async (req, res) => {
 
     // Validate structure
     if (!quizData.questions || quizData.questions.length !== 5) {
-       // Simple fallback logic if LLM fails count
        console.warn("LLM failed exact count. attempting to use what was returned.");
     }
 
@@ -322,8 +394,13 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     
     const merged = chunkResponses.filter(Boolean).join('\n\n').slice(0, 15000); 
     
+    // Strategy 2: Structural Compression Prompt
     const synthesisPrompt = `Synthesize into exactly 5 "Battle Units" (topic + content). 
-    CRITICAL: The 'content' must be rich, detailed, and formatted using Markdown (use ## Headers, **bold terms**, and - bullet points).
+    CRITICAL: 
+    1. Structure: Use JSON/Bullets for facts (Structural Compression).
+    2. Format: Use Markdown (## Headers, **bold terms**).
+    3. Density: High information density, no fluff.
+    
     Return JSON: { "units": [{ "topic": "", "content": "" }] }. 
     Source: ${merged}`;
     
@@ -353,12 +430,9 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post("/api/webhook", (req, res) => res.json({ ok: true }));
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+app.post("/api/webhook", async (req, res) => {
+    // Placeholder webhook for future integrations
+    res.status(200).send("OK");
+});
 
 export default app;
