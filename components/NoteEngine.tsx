@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, Loader2, CheckCircle2, Save, ArrowRight, MessageSquare, BookOpen, ThumbsUp, ThumbsDown, Check, Trophy, AlertCircle, RefreshCw, Brain, UploadCloud, Library, XCircle } from 'lucide-react';
+import { FileText, Loader2, CheckCircle2, Save, ArrowRight, MessageSquare, BookOpen, ThumbsUp, ThumbsDown, Check, Trophy, AlertCircle, RefreshCw, Brain, UploadCloud, Library, XCircle, File, X, LayoutTemplate, Gamepad2, ExternalLink } from 'lucide-react';
 import { Chunk, NoteBlock, UserData, Badge, QuizQuestion, ChatMessage } from '../types';
 import { localAnswerer, processSyllabusFile, generateBattleQuiz } from '../services/ai_engine';
 import { saveLearningFeedback, saveUserBadge } from '../services/firebase';
@@ -33,7 +33,10 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<string>('');
   const [outline, setOutline] = useState<{ topic: string; relevant_chunks: string[] }[]>([]);
-  const [instructions, setInstructions] = useState(''); 
+  // Replaced manual instructions with checkbox state
+  const [useSyllabusMapping, setUseSyllabusMapping] = useState(true); 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const [finalNotes, setFinalNotes] = useState<NoteBlock[]>(savedNotes || []);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [chatInput, setChatInput] = useState('');
@@ -56,26 +59,49 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
     }
   }, [savedNotes]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (files && files.length > 0) {
+      setSelectedFile(files[0]);
+    }
+  };
+
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const startProcessing = async () => {
+    if (!selectedFile) return;
 
     if ("Notification" in window && Notification.permission === "default") {
       await Notification.requestPermission();
     }
 
     setIsProcessing(true);
-    setProcessStatus(`Reading ${files[0].name}...`);
+    setProcessStatus(`Reading ${selectedFile.name}...`);
     setStep('synthesizing');
 
+    // Generate instructions based on checkbox
+    const instructions = useSyllabusMapping 
+      ? "Strictly organize the content into academic units matching a standard syllabus structure. Ensure clear separation of topics." 
+      : "";
+
     try {
-      const file = files[0]; 
-      const { outline: backendOutline, finalNotes: backendFinalNotes, fullText } = await processSyllabusFile(file, instructions);
+      const { outline: backendOutline, finalNotes: backendFinalNotes, fullText } = await processSyllabusFile(selectedFile, instructions);
       
       setAllChunks([{ chunk_id: 'syllabus_full', text: fullText }]); 
       setOutline(backendOutline);
       setFinalNotes(backendFinalNotes);
       onSaveSession(backendFinalNotes, fullText); 
+
+      // Send Notification when done
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Vekkam Engine", { 
+          body: "Analysis complete! Your study guide is ready.",
+          icon: "/favicon.ico" // assuming default favicon path
+        });
+      }
 
       // Badge logic
       const hasBadge = userData.badges?.some(b => b.type === 'syllabus_survivor');
@@ -101,10 +127,16 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
       console.error(err);
       alert("Extraction failed. Please check the file format.");
       setStep('upload'); 
-    } finally {
       setIsProcessing(false);
-      setProcessStatus('');
     }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
   
   const handleChat = async () => {
@@ -204,33 +236,87 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
             <p className="text-gray-600 dark:text-gray-400 mt-2">Upload your notes or syllabus. <br />We'll organize them into a study plan.</p>
           </div>
           
-          <div 
-            onClick={() => !isProcessing && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-12 transition-all group ${!isProcessing ? 'border-gray-300 dark:border-gray-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 cursor-pointer' : 'border-gray-200 dark:border-gray-800 opacity-50 cursor-not-allowed'}`}
-          >
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileUpload} 
-              className="hidden" 
-              multiple 
-              accept=".pdf,image/*,audio/*,.txt" 
-              disabled={isProcessing} 
-            />
-            <div className="flex flex-col items-center gap-4">
-              <div className={`p-4 rounded-full bg-white dark:bg-gray-800 shadow-sm ${!isProcessing ? 'group-hover:text-blue-600' : ''} transition-colors`}>
-                <UploadCloud size={32} />
-              </div>
-              <div className="space-y-1">
-                <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Click to upload document
+          {!selectedFile ? (
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-12 transition-all hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 cursor-pointer group"
+            >
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept=".pdf,image/*,audio/*,.txt" 
+              />
+              <div className="flex flex-col items-center gap-4">
+                <div className="p-4 rounded-full bg-white dark:bg-gray-800 shadow-sm group-hover:text-blue-600 transition-colors">
+                  <UploadCloud size={32} />
                 </div>
-                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  PDF, TXT, or Images supported
+                <div className="space-y-1">
+                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Click to upload document
+                  </div>
+                  <div className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    PDF, TXT, or Images supported
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm text-left animate-in fade-in zoom-in-95">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                    <File size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-xs" title={selectedFile.name}>
+                      {selectedFile.name}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{formatFileSize(selectedFile.size)}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleClearFile}
+                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="mb-6 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-100 dark:border-gray-800">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="relative flex items-center">
+                    <input 
+                      type="checkbox" 
+                      className="peer sr-only"
+                      checked={useSyllabusMapping}
+                      onChange={(e) => setUseSyllabusMapping(e.target.checked)}
+                    />
+                    <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 rounded-md peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-all"></div>
+                    <Check size={14} className="absolute left-0.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-200 group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                      <LayoutTemplate size={16} /> Map to Syllabus Structure
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      AI will analyze content and organize it into standard academic units. Recommended for exam preparation.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                 <button 
+                   onClick={startProcessing}
+                   className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
+                 >
+                   Analyze Document <ArrowRight size={18} />
+                 </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -245,6 +331,23 @@ const NoteEngine: React.FC<NoteEngineProps> = ({
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Analyzing Content...</h2>
             <p className="text-gray-500 dark:text-gray-400 mt-2">{processStatus || "Identifying key concepts."}</p>
           </div>
+        </div>
+
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm">
+           <div className="flex items-center justify-center w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full mx-auto mb-4">
+             <Gamepad2 size={24} /> 
+           </div>
+           <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Analysis in Progress</h3>
+           <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+             This process can take a minute. Why not keep your brain active? 
+             We'll send you a notification when your study guide is ready.
+           </p>
+           <button 
+             onClick={() => window.open('https://play2048.co/', '_blank')}
+             className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-black font-bold rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
+           >
+             Play 2048 <ExternalLink size={16} />
+           </button>
         </div>
       </div>
     );

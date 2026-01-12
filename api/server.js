@@ -4,7 +4,6 @@ import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import { GoogleGenAI } from "@google/genai";
-import { HfInference } from '@huggingface/inference';
 import multer from 'multer';
 import pdf from 'pdf-parse/lib/pdf-parse.js'; 
 import mammoth from 'mammoth';
@@ -27,9 +26,6 @@ const LLAMA_API_URL = process.env.LLAMA_API_URL || "https://inference-llm.onrend
 
 // 3. Tertiary: Gemini API
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// Initialize HF Client
-const hf = new HfInference(HF_TOKEN);
 
 // Strategy 4 & 5: Learned Compression via System Prompting
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
@@ -63,21 +59,37 @@ async function callHuggingFaceVekkam(prompt, systemInstruction) {
   // if the model isn't strictly chat-tuned with a messages array.
   // We combine them here to ensure the "Ruthless" persona is maintained.
   const fullInput = `<|system|>\n${systemInstruction}\n<|user|>\n${prompt}\n<|assistant|>\n`;
+  const url = `https://router.huggingface.co/models/${HF_MODEL_ID}`;
 
   try {
-    const result = await hf.textGeneration({
-      model: HF_MODEL_ID,
-      inputs: fullInput,
-      parameters: {
-        max_new_tokens: 1500, // Generous limit for detailed notes
-        return_full_text: false, // Only return the generated part
-        temperature: 0.7,
-        do_sample: true
-      }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${HF_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        inputs: fullInput,
+        parameters: {
+          max_new_tokens: 1500, // Generous limit for detailed notes
+          return_full_text: false, // Only return the generated part
+          temperature: 0.7,
+          do_sample: true
+        }
+      })
     });
 
-    if (!result.generated_text) throw new Error("Empty response from Hugging Face.");
-    return result.generated_text;
+    if (!response.ok) {
+       const errText = await response.text();
+       throw new Error(`HF Error ${response.status}: ${errText}`);
+    }
+
+    const result = await response.json();
+    // Result can be [{ generated_text: "..." }] or { generated_text: "..." } depending on endpoint version
+    const text = Array.isArray(result) ? result[0].generated_text : result.generated_text;
+
+    if (!text) throw new Error("Empty response from Hugging Face.");
+    return text;
 
   } catch (error) {
     throw new Error(`Hugging Face API failed: ${error.message}`);
