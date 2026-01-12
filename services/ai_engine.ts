@@ -1,4 +1,3 @@
-
 import { Chunk, NoteBlock, QuizQuestion, StudyGroup, Badge } from "../types";
 import { logDataInteraction } from "./firebase";
 
@@ -10,12 +9,24 @@ If a concept is fluff, cut it. If it is complex, break it into battle units.
 Always prioritize questions as the primary teaching tool.`;
 
 /**
- * Utility to call the Qwen backend via Vercel proxy
+ * Utility to call the Qwen backend via Vercel proxy.
+ * Supports both blocking and streaming modes.
  */
-async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYSTEM_PROMPT): Promise<string> {
-  const fullPrompt = `${systemInstruction}\n\nTask:\n${prompt}`;
+async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYSTEM_PROMPT, onStream?: (chunk: string) => void): Promise<string> {
+  // Construct the full prompt using the SYSTEM/USER/ASSISTANT template for base models
+  const fullPrompt = `SYSTEM:
+${systemInstruction}
+
+USER:
+${prompt}
+
+ASSISTANT:
+`;
   
-  const response = await fetch('/api/generate', {
+  // If streaming is requested, use the streaming endpoint
+  const endpoint = onStream ? '/api/chat' : '/api/generate';
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt: fullPrompt })
@@ -25,6 +36,23 @@ async function callQwen(prompt: string, systemInstruction: string = RUTHLESS_SYS
     throw new Error('Clearing failed at the engine level.');
   }
 
+  // Handle Streaming
+  if (onStream && response.body) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      fullText += chunk;
+      onStream(chunk);
+    }
+    return fullText;
+  }
+
+  // Handle Blocking JSON
   const data = await response.json();
   return data.text || data.response || data.generated_text || "";
 }
@@ -181,13 +209,16 @@ const getRelevantContext = (
  * The Unified RAG Query function.
  * Aggregates data from Notes, Study Groups, and Badges to answer the user's question.
  * Logs structured data to secondary DB using parsed Markdown sections.
+ * 
+ * Supports STREAMING via optional callback.
  */
 export const queryStrategyTA = async (
   query: string, 
   chatHistory: { role: string, content: string }[],
   allSessions: { id: string, title: string, notes: NoteBlock[] }[],
   studyGroups: StudyGroup[],
-  badges: Badge[]
+  badges: Badge[],
+  onToken?: (text: string) => void
 ): Promise<{ text: string, sources: string[] }> => {
   
   // 1. Aggregation Phase
@@ -268,9 +299,11 @@ export const queryStrategyTA = async (
     (A common mistake to avoid or a pro-tip)
   `;
 
-  const rawResponse = await callQwen(prompt);
+  // Call Qwen with streaming callback if provided
+  const rawResponse = await callQwen(prompt, undefined, onToken);
   
   // 4. Parsing Phase (Extract sections for Logging)
+  // Note: For streaming, we log whatever final text we accumulated
   let explanation = rawResponse;
   let finalAnswer = "";
   let commonMistake = "";

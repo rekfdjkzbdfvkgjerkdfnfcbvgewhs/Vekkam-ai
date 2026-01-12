@@ -26,7 +26,8 @@
     "dotenv": "^16.4.5",
     "pdf-parse": "^1.1.1",
     "mammoth": "^1.6.0",
-    "tesseract.js": "^5.0.5"
+    "tesseract.js": "^5.0.5",
+    "ai": "^2.2.31"
   },
   "devDependencies": {
     "vite": "^5.0.0",

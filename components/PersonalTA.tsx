@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, Loader2, Sparkles, Target, ThumbsUp, ThumbsDown, Check, BrainCircuit, Link, Database, Trash2, GraduationCap } from 'lucide-react';
 import { Session, StudyGroup, Badge } from '../types';
@@ -39,30 +38,63 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
 
     const userMsg = input;
     const userId = `msg_${Date.now()}`;
+    const assistantId = `ai_${Date.now()}`;
+    
     setInput('');
     
     // Prepare history from existing messages
     const history = messages.map(m => ({ role: m.role, content: m.content }));
 
-    setMessages(prev => [...prev, { role: 'user', content: userMsg, id: userId }]);
+    // Optimistically update UI
+    setMessages(prev => [
+      ...prev, 
+      { role: 'user', content: userMsg, id: userId },
+      { role: 'assistant', content: '', id: assistantId } // Placeholder for streaming
+    ]);
+    
     setLoading(true);
 
     try {
-      // Use the unified RAG function with chat history
-      const { text, sources } = await queryStrategyTA(userMsg, history, sessions, studyGroups, userBadges);
+      // Use the unified RAG function with streaming
+      const { text, sources } = await queryStrategyTA(
+        userMsg, 
+        history, 
+        sessions, 
+        studyGroups, 
+        userBadges,
+        (chunk) => {
+          // Update the last message (the placeholder) with new tokens
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg && lastMsg.id === assistantId) {
+              lastMsg.content += chunk;
+            }
+            return newMessages;
+          });
+        }
+      );
       
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: text, 
-        id: `ai_${Date.now()}`,
-        sources: sources
-      }]);
+      // Final update to set sources
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMsg = newMessages[newMessages.length - 1];
+        if (lastMsg && lastMsg.id === assistantId) {
+          lastMsg.sources = sources;
+        }
+        return newMessages;
+      });
+
     } catch (err) {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "I'm having trouble connecting to your notes right now. Please try again.",
-        id: `err_${Date.now()}`
-      }]);
+      setMessages(prev => {
+         const msgs = [...prev];
+         // Remove the loading placeholder or update it with error
+         const lastMsg = msgs[msgs.length - 1];
+         if (lastMsg && lastMsg.id === assistantId) {
+            lastMsg.content = "I'm having trouble connecting to your notes right now. Please try again.";
+         }
+         return msgs;
+      });
     } finally {
       setLoading(false);
     }
@@ -161,7 +193,15 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                      <p className="whitespace-pre-wrap">{m.content}</p>
                    ) : (
                      <div className="prose prose-sm prose-blue dark:prose-invert max-w-none">
-                       <ReactMarkdown>{m.content}</ReactMarkdown>
+                       {m.content === "" && loading ? (
+                         <div className="flex gap-1 items-center h-5">
+                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                         </div>
+                       ) : (
+                         <ReactMarkdown>{m.content}</ReactMarkdown>
+                       )}
                      </div>
                    )}
                 </div>
@@ -182,7 +222,7 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                     )}
 
                     {/* Feedback Actions */}
-                    {!m.feedbackGiven ? (
+                    {!m.feedbackGiven && !loading && m.content.length > 10 && (
                       <div className="flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity duration-200">
                         <button 
                           onClick={() => submitFeedback(i, 1)}
@@ -199,7 +239,8 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
                           <ThumbsDown size={12} />
                         </button>
                       </div>
-                    ) : (
+                    )}
+                    {m.feedbackGiven && (
                        <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
                          <Check size={10} /> Feedback Recorded
                        </div>
@@ -211,8 +252,8 @@ const PersonalTA: React.FC<PersonalTAProps> = ({ sessions, studyGroups = [], use
           ))
         )}
         
-        {/* Loading Indicator */}
-        {loading && (
+        {/* Loading Indicator (Only if no messages yet to prevent jump) */}
+        {loading && messages.length === 0 && (
           <div className="flex justify-start animate-in fade-in">
             <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 rounded-2xl rounded-tl-none flex items-center gap-3 shadow-sm">
               <Loader2 size={18} className="animate-spin text-blue-600 dark:text-blue-400" />

@@ -1,8 +1,9 @@
 import 'dotenv/config'; // Load environment variables
 import express from 'express';
 import cors from 'cors';
-import fetch from 'node-fetch';
 import { InferenceClient } from "@huggingface/inference";
+import { GoogleGenAI } from "@google/genai";
+import { HuggingFaceStream, streamToResponse } from 'ai';
 import multer from 'multer';
 import pdf from 'pdf-parse/lib/pdf-parse.js'; 
 import mammoth from 'mammoth';
@@ -24,19 +25,10 @@ const client = new InferenceClient(HF_TOKEN);
 
 // 2. Secondary: Gemini API (Fallback)
 const GEMINI_KEY = process.env.GEMINI_KEY;
-
-// Strategy: Learned Compression via System Prompting
-const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
-Your goal is to save the student before their exam ruins their life. 
-Do not be overly conversational. Be decisive. 
-
-OPTIMIZATION STRATEGIES:
-1. Structural Compression: Kill English, keep meaning. Use structured formats (JSON/Bullets) for facts.
-2. Reasoning Sketches: Use bullet logic (A → B) instead of verbose explanations.
-3. High-Yield Only: If a concept is fluff, cut it.
-
-If a concept is complex, break it into battle units.
-Always prioritize questions as the primary teaching tool.`;
+let geminiClient = null;
+if (GEMINI_KEY) {
+  geminiClient = new GoogleGenAI({ apiKey: GEMINI_KEY });
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -47,26 +39,29 @@ const upload = multer({
 
 /**
  * 1. Primary: Hugging Face Inference (Sambit-Mishra/vkm-v0)
- * Uses InferenceClient SDK to call the model via Chat Completion API.
+ * Uses textGeneration SDK method for base causal LM.
+ * Accepts a pre-constructed full prompt.
  */
-async function callHuggingFaceVekkam(prompt, systemInstruction) {
+async function callHuggingFaceVekkam(promptText) {
   if (!HF_TOKEN) throw new Error("HF_TOKEN environment variable is missing.");
   
   console.log(`[${new Date().toISOString()}] Calling Hugging Face (${HF_MODEL_ID})...`);
 
   try {
-    const chatCompletion = await client.chatCompletion({
+    const response = await client.textGeneration({
       model: HF_MODEL_ID,
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 2000, 
-      temperature: 0.7,
-      seed: 42
+      inputs: promptText,
+      parameters: {
+        max_new_tokens: 2000,
+        temperature: 0.7,
+        top_p: 0.9,
+        repetition_penalty: 1.1,
+        return_full_text: false
+      }
     });
 
-    const text = chatCompletion.choices[0]?.message?.content;
+    const text = response.generated_text;
+    
     if (!text) throw new Error("Empty response from Hugging Face.");
     return text;
 
@@ -76,43 +71,23 @@ async function callHuggingFaceVekkam(prompt, systemInstruction) {
 }
 
 /**
- * 2. Secondary: Gemini API (Direct REST Call)
+ * 2. Secondary: Gemini API (SDK)
+ * Fallback that accepts the same pre-constructed full prompt.
  */
-async function callGeminiAPI(prompt, systemInstruction) {
-  if (!GEMINI_KEY) {
+async function callGeminiAPI(promptText) {
+  if (!geminiClient) {
     throw new Error("GEMINI_KEY environment variable is missing.");
   }
   
   console.log(`[${new Date().toISOString()}] Attempting Gemini Fallback...`);
-  
-  // Using gemini-1.5-flash as a reliable fast model
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
-  
-  const payload = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: `${systemInstruction}\n\nTask:\n${prompt}` }
-        ]
-      }
-    ]
-  };
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const response = await geminiClient.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: promptText,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API responded with ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = response.text;
     
     if (!text) throw new Error("Gemini returned no text.");
     return text;
@@ -123,18 +98,19 @@ async function callGeminiAPI(prompt, systemInstruction) {
 }
 
 /**
- * Main Orchestrator
+ * Main Orchestrator (Non-Streaming)
+ * Expects `promptText` to be the FULL prompt (System Instructions + User Task).
  */
-async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
+async function callLLM(promptText) {
   // 1. Try Hugging Face (Vekkam V0)
   try {
-    return await callHuggingFaceVekkam(prompt, systemInstruction);
+    return await callHuggingFaceVekkam(promptText);
   } catch (hfError) {
     console.warn(`[${new Date().toISOString()}] Primary (HF/Vekkam) failed: ${hfError.message}`);
     
     // 2. Try Gemini API directly
     try {
-      return await callGeminiAPI(prompt, systemInstruction);
+      return await callGeminiAPI(promptText);
     } catch (geminiError) {
       console.error(`[${new Date().toISOString()}] Critical: All LLM tiers failed.`);
       throw new Error("Service unavailable. All AI models are currently down.");
@@ -240,10 +216,80 @@ async function _extractTextLocal(buffer, mimeType) {
   }
 }
 
+// --- Helper: Robust JSON Parser for LLM Output ---
+function parseLLMJson(rawText) {
+  // 1. Try finding a JSON code block
+  let clean = rawText.replace(/```json|```/g, '').trim();
+  
+  // 2. Try finding the first '{' and last '}'
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    clean = jsonMatch[0];
+  }
+
+  try {
+    return JSON.parse(clean);
+  } catch (e) {
+    throw new Error("Failed to parse JSON from model output.");
+  }
+}
+
 // --- API Routes ---
+
+/**
+ * Streaming Chat Endpoint using Vercel AI SDK
+ */
+app.post('/api/chat', async (req, res) => {
+  const { prompt } = req.body;
+
+  if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+
+  try {
+    // Call Hugging Face via AI SDK
+    const response = await client.textGenerationStream({
+      model: HF_MODEL_ID,
+      inputs: prompt, // Expects full prompt: SYSTEM... USER... ASSISTANT...
+      parameters: {
+        max_new_tokens: 2000,
+        temperature: 0.7,
+        top_p: 0.9,
+        repetition_penalty: 1.1,
+        return_full_text: false
+      }
+    });
+
+    // Create the stream using Vercel AI SDK helper
+    const stream = HuggingFaceStream(response);
+
+    // Pipe the stream to the Express response
+    // Set headers for SSE-like streaming (though this is raw text stream)
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    const reader = stream.getReader();
+    
+    // Pump the stream
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
+
+  } catch (error) {
+    console.error("Streaming failed:", error);
+    // If headers haven't been sent, send error json
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.end();
+    }
+  }
+});
 
 app.post('/api/generate', async (req, res) => {
   try {
+    // Expects req.body.prompt to be the FULL constructed prompt
     const text = await callLLM(req.body.prompt);
     res.json({ text });
   } catch (e) {
@@ -256,48 +302,52 @@ app.post('/api/generate-quiz', async (req, res) => {
   if (!content) return res.status(400).json({ error: "No content provided" });
 
   try {
-    // NLP Step: Reduce context to high-yield segments
-    const smartContent = getSmartContext(content, 8000); // 8k limit for quiz context
+    const smartContent = getSmartContext(content, 8000);
 
-    const prompt = `
-      You are a ruthless exam gatekeeper.
-      Generate exactly 5 Multiple Choice Questions.
-      
-      STRICT REQUIREMENT:
-      One question for EACH Bloom's Taxonomy level:
-      1. Remembering
-      2. Understanding
-      3. Applying
-      4. Analyzing
-      5. Evaluating
+    const systemInstruction = `You are a ruthless exam gatekeeper.
+Generate exactly 5 Multiple Choice Questions.
 
-      Output ONLY valid JSON:
-      {
-        "questions": [
-          {
-            "question": "...",
-            "options": ["A", "B", "C", "D"],
-            "answer": "Option Text", 
-            "taxonomy": "Remembering",
-            "explanation": "..."
-          }
-        ]
-      }
+STRICT REQUIREMENT:
+One question for EACH Bloom's Taxonomy level:
+1. Remembering
+2. Understanding
+3. Applying
+4. Analyzing
+5. Evaluating
 
-      Context:
-      ${smartContent}
-    `;
+Output ONLY valid JSON:
+{
+  "questions": [
+    {
+      "question": "...",
+      "options": ["A", "B", "C", "D"],
+      "answer": "Option Text", 
+      "taxonomy": "Remembering",
+      "explanation": "..."
+    }
+  ]
+}`;
+
+    const userPrompt = `Context:
+${smartContent}`;
+
+    const prompt = `SYSTEM:
+${systemInstruction}
+
+USER:
+${userPrompt}
+
+ASSISTANT:
+`;
 
     const rawResponse = await callLLM(prompt);
-    const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
     
-    // Safety parse
     try {
-        const quizData = JSON.parse(cleanJson);
+        const quizData = parseLLMJson(rawResponse);
         res.json(quizData);
     } catch(e) {
-        console.error("JSON Parse Error:", cleanJson);
-        throw new Error("Model returned invalid JSON");
+        console.error("JSON Parse Error:", rawResponse);
+        res.status(500).json({ error: "Model returned invalid JSON", raw: rawResponse });
     }
 
   } catch (e) {
@@ -307,18 +357,27 @@ app.post('/api/generate-quiz', async (req, res) => {
 });
 
 app.post('/api/generate-gauntlet', async (req, res) => {
-  const { prompt, context } = req.body; // Context passed from frontend RAG
+  const { prompt, context } = req.body;
   if (!prompt) return res.status(400).json({ error: "No prompt provided" });
 
   try {
-    // If context provided, use it, otherwise rely on prompt
-    const fullPrompt = context ? `${prompt}\n\nReference Material:\n${getSmartContext(context, 10000)}` : prompt;
+    const fullUserPrompt = context 
+      ? `${prompt}\n\nReference Material:\n${getSmartContext(context, 10000)}` 
+      : `${prompt}`;
     
+    const fullPrompt = `SYSTEM:
+You are a rigorous academic examiner.
+
+USER:
+${fullUserPrompt}
+
+ASSISTANT:
+`;
+
     const rawResponse = await callLLM(fullPrompt);
-    const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
     
     try {
-      res.json(JSON.parse(cleanJson));
+      res.json(parseLLMJson(rawResponse));
     } catch (parseError) {
       res.status(500).json({ error: "Invalid JSON format", raw: rawResponse });
     }
@@ -343,35 +402,39 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
   try {
     const rawText = await _extractTextLocal(req.file.buffer, req.file.mimetype);
     if (!rawText) throw new Error("No text extracted");
-
-    // Strategy: RAG-first processing
-    // Instead of chaining LLM calls on chunks, we use NLP to compress the text 
-    // to the most "information-dense" 25k characters, then run a single LLM pass.
     
     const compressedText = getSmartContext(rawText, 30000);
 
-    const synthesisPrompt = `Synthesize this material into exactly 5 "Battle Units" (High-yield topics). 
+    const systemInstruction = `Synthesize this material into exactly 5 "Battle Units" (High-yield topics). 
     
-    CRITICAL INSTRUCTIONS:
-    1. Output JSON ONLY.
-    2. Format: { "units": [{ "topic": "Title", "content": "Markdown Content" }] }
-    3. Content Style: Use bullet points, bold keywords, and rigorous structure. No conversational fluff.
-    4. If text is fragmented, infer the logical structure.
+CRITICAL INSTRUCTIONS:
+1. Output JSON ONLY.
+2. Format: { "units": [{ "topic": "Title", "content": "Markdown Content" }] }
+3. Content Style: Use bullet points, bold keywords, and rigorous structure. No conversational fluff.
+4. If text is fragmented, infer the logical structure.`;
 
-    Source Material:
-    ${compressedText}`;
+    const userPrompt = `Source Material:
+${compressedText}`;
+
+    const prompt = `SYSTEM:
+${systemInstruction}
+
+USER:
+${userPrompt}
+
+ASSISTANT:
+`;
     
-    const rawSynth = await callLLM(synthesisPrompt);
+    const rawSynth = await callLLM(prompt);
     let finalNotes = [];
     let fullText = "";
 
     try {
-      const jsonStr = rawSynth.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(jsonStr);
+      const parsed = parseLLMJson(rawSynth);
       finalNotes = parsed.units.map(u => ({ 
         topic: u.topic, 
         content: u.content, 
-        source_chunks: [] // Metadata placeholder
+        source_chunks: [] 
       }));
       fullText = finalNotes.map(n => `# ${n.topic}\n\n${n.content}`).join('\n\n');
     } catch (e) {
