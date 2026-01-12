@@ -16,9 +16,9 @@ app.use(express.json({ limit: '50mb' }));
 // --- Configuration ---
 
 // 1. Primary: Hugging Face (Vekkam V0)
-// The model ID provided: Sambit-Mishra/vekkam-v0
+// The model ID provided: Sambit-Mishra/vkm-v0
 const HF_TOKEN = process.env.HF_TOKEN;
-const HF_MODEL_ID = "Sambit-Mishra/vekkam-v0";
+const HF_MODEL_ID = "Sambit-Mishra/vkm-v0";
 
 // 2. Secondary: Gemini API
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;

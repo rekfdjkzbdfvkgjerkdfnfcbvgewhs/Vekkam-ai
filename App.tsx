@@ -11,7 +11,7 @@ import { MockTestGenerator } from './components/MockTestGenerator';
 import StudyGroups from './components/StudyGroups'; // New import
 import Achievements from './components/Achievements'; // New import
 import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge, ChatMessage } from './types';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { 
   auth, 
   db, 
@@ -48,9 +48,6 @@ const App: React.FC = () => {
   const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
   const [sessionChatHistory, setSessionChatHistory] = useState<ChatMessage[]>([]); // New: Lifted chat state
   const [isFetchingContent, setIsFetchingContent] = useState(false);
-
-  // LLM Fallback state - set to true to indicate temporary Gemini usage
-  const [showLLMFallbackAlert, setShowLLMFallbackAlert] = useState(true);
 
   // Dark mode effect
   useEffect(() => {
@@ -255,15 +252,6 @@ const App: React.FC = () => {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
       >
-        {showLLMFallbackAlert && (
-          <div className="bg-amber-500 dark:bg-amber-700 text-white p-3 flex items-center justify-center gap-3 text-sm font-medium">
-            <Info size={18} />
-            <span>Facing some problems with our primary LLM. Temporarily using Gemini for text generation.</span>
-            <button onClick={() => setShowLLMFallbackAlert(false)} className="ml-auto p-1 rounded-md hover:bg-white/20 transition-colors">
-              Dismiss
-            </button>
-          </div>
-        )}
         <div className="h-full relative">
           {isFetchingContent && (
              <div className="absolute inset-0 bg-white/80 dark:bg-gray-950/80 z-50 flex items-center justify-center">
