@@ -1,4 +1,3 @@
-
 {
   "name": "vekkam-engine",
   "version": "1.0.0",
@@ -12,7 +11,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
-    "@huggingface/inference": "^2.6.4",
+    "@huggingface/inference": "^4.13.5",
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "node-fetch": "^3.3.2",

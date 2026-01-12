@@ -1,10 +1,8 @@
-
 import 'dotenv/config'; // Load environment variables
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
-import { GoogleGenAI } from "@google/genai";
-import { HfInference } from "@huggingface/inference";
+import { InferenceClient } from "@huggingface/inference";
 import multer from 'multer';
 import pdf from 'pdf-parse/lib/pdf-parse.js'; 
 import mammoth from 'mammoth';
@@ -22,12 +20,12 @@ const HF_TOKEN = process.env.HF_TOKEN;
 const HF_MODEL_ID = "Sambit-Mishra/vkm-v0";
 
 // Initialize HF Client
-const hf = new HfInference(HF_TOKEN);
+const client = new InferenceClient(HF_TOKEN);
 
-// 2. Secondary: Gemini API
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// 2. Secondary: Gemini API (Fallback)
+const GEMINI_KEY = process.env.GEMINI_KEY;
 
-// Strategy 4 & 5: Learned Compression via System Prompting
+// Strategy: Learned Compression via System Prompting
 const RUTHLESS_SYSTEM_PROMPT = `You are Vekkam, a ruthless exam-first study engine. 
 Your goal is to save the student before their exam ruins their life. 
 Do not be overly conversational. Be decisive. 
@@ -49,7 +47,7 @@ const upload = multer({
 
 /**
  * 1. Primary: Hugging Face Inference (Sambit-Mishra/vkm-v0)
- * Uses HfInference SDK to replicate pipeline("text-generation", model=...) behavior with messages.
+ * Uses InferenceClient SDK to call the model via Chat Completion API.
  */
 async function callHuggingFaceVekkam(prompt, systemInstruction) {
   if (!HF_TOKEN) throw new Error("HF_TOKEN environment variable is missing.");
@@ -57,60 +55,70 @@ async function callHuggingFaceVekkam(prompt, systemInstruction) {
   console.log(`[${new Date().toISOString()}] Calling Hugging Face (${HF_MODEL_ID})...`);
 
   try {
-    // Equivalent to pipe(messages) in Python transformers
-    const response = await hf.chatCompletion({
+    const chatCompletion = await client.chatCompletion({
       model: HF_MODEL_ID,
       messages: [
         { role: "system", content: systemInstruction },
         { role: "user", content: prompt }
       ],
-      max_tokens: 1500,
+      max_tokens: 2000, 
       temperature: 0.7,
-      seed: 42 // Consistency
+      seed: 42
     });
 
-    const text = response.choices[0].message.content;
+    const text = chatCompletion.choices[0]?.message?.content;
     if (!text) throw new Error("Empty response from Hugging Face.");
     return text;
 
   } catch (error) {
-    // If chatCompletion fails (e.g. model doesn't support it on Inference API),
-    // we could fall back to textGeneration, but sticking to the requested "equivalent" logic first.
     throw new Error(`Hugging Face API failed: ${error.message}`);
   }
 }
 
 /**
- * 2. Secondary: Gemini API (Google GenAI SDK)
+ * 2. Secondary: Gemini API (Direct REST Call)
  */
 async function callGeminiAPI(prompt, systemInstruction) {
-  if (!GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY environment variable is missing.");
+  if (!GEMINI_KEY) {
+    throw new Error("GEMINI_KEY environment variable is missing.");
   }
   
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  const contents = `${systemInstruction}\n\nTask:\n${prompt}`;
+  console.log(`[${new Date().toISOString()}] Attempting Gemini Fallback...`);
+  
+  // Using gemini-1.5-flash as a reliable fast model
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: `${systemInstruction}\n\nTask:\n${prompt}` }
+        ]
+      }
+    ]
+  };
 
   try {
-    console.log(`[${new Date().toISOString()}] Attempting Gemini 2.5 Flash Preview (Secondary)...`);
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview',
-      contents: contents,
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-    if (response.text) return response.text;
-  } catch (e) {
-    console.warn(`[${new Date().toISOString()}] Gemini 2.5 failed. Retrying with Gemini 3...`);
-  }
 
-  try {
-    console.log(`[${new Date().toISOString()}] Attempting Gemini 3 Flash Preview (Last Resort)...`);
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: contents,
-    });
-    return response.text || "No response generated.";
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API responded with ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!text) throw new Error("Gemini returned no text.");
+    return text;
+
   } catch (e) {
-    throw new Error(`All Gemini attempts failed. Last error: ${e.message}`);
+    throw new Error(`Gemini Fallback Failed: ${e.message}`);
   }
 }
 
@@ -118,9 +126,6 @@ async function callGeminiAPI(prompt, systemInstruction) {
  * Main Orchestrator
  */
 async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
-  const fullContentLength = prompt.length + systemInstruction.length;
-  console.log(`[${new Date().toISOString()}] Generative Request (Length: ${fullContentLength})`);
-
   // 1. Try Hugging Face (Vekkam V0)
   try {
     return await callHuggingFaceVekkam(prompt, systemInstruction);
@@ -138,47 +143,76 @@ async function callLLM(prompt, systemInstruction = RUTHLESS_SYSTEM_PROMPT) {
 }
 
 /**
- * Heuristic RG (Retrieval/Grouping) function to select high-value context.
+ * NLP Helper: Text Cleaning
  */
-function getSmartContext(text, limit = 6000) {
+function cleanText(text) {
+  if (!text) return "";
+  return text
+    .replace(/(\w)-\n(\w)/g, '$1$2') // Fix hyphenation
+    .replace(/\r\n/g, '\n')
+    .replace(/\n\s*\n/g, '\n\n') // Normalize paragraphs
+    .replace(/[ \t]+/g, ' ') // Collapse spaces
+    .replace(/Page \d+|^\d+$/gm, '') // Remove obvious page numbers
+    .trim();
+}
+
+/**
+ * NLP Helper: Smart Context Selection (RAG)
+ * Filters text to fit context window based on information density.
+ */
+function getSmartContext(text, limit = 25000) {
   if (!text || text.length <= limit) return text;
 
-  // 1. Analyze Word Frequency (RG Step)
+  console.log(`[${new Date().toISOString()}] Running NLP Compression on ${text.length} chars...`);
+
+  // 1. Term Frequency Analysis (Identify document theme)
+  // We look for words > 4 chars to ignore stop words loosely
   const words = text.toLowerCase().match(/[a-z]{4,}/g) || [];
   const freq = {};
   words.forEach(w => freq[w] = (freq[w] || 0) + 1);
 
-  // 2. Score Paragraphs based on information density
+  // 2. Score Paragraphs
   const paragraphs = text.split(/\n\s*\n/);
   const scored = paragraphs.map((p, index) => {
     const pWords = p.toLowerCase().match(/[a-z]{4,}/g) || [];
+    if (pWords.length < 5) return { text: p, score: 0, index }; // Skip tiny fragments
+
+    // Score = Sum of term frequencies in paragraph
     const rawScore = pWords.reduce((acc, w) => acc + (freq[w] || 0), 0);
-    const score = pWords.length > 0 ? rawScore / Math.log(pWords.length + 2) : 0;
+    
+    // Normalize by log length to favor density but not punish shortness too much
+    // We want dense information.
+    const score = rawScore / Math.log(pWords.length + 2);
+    
     return { text: p, score, index }; 
   });
 
-  // 3. Select Top Paragraphs until limit
+  // 3. Selection
   scored.sort((a, b) => b.score - a.score);
   
   let resultChunks = [];
   let currentLen = 0;
   
-  const firstPara = paragraphs[0];
-  if (firstPara) {
-    resultChunks.push({ text: firstPara, index: -1 });
-    currentLen += firstPara.length;
+  // Always keep the first paragraph (often title/intro)
+  if (paragraphs[0]) {
+    resultChunks.push({ text: paragraphs[0], index: -1 });
+    currentLen += paragraphs[0].length;
   }
 
   for (const item of scored) {
+    if (item.index === 0) continue; // Already added
     if (currentLen + item.text.length < limit) {
       resultChunks.push(item);
       currentLen += item.text.length;
     }
   }
 
-  // 4. Sort back by original index to maintain logical flow
+  // 4. Reorder by original index to maintain narrative flow
   resultChunks.sort((a, b) => a.index - b.index);
-  return resultChunks.map(c => c.text).join('\n\n');
+  
+  const compressed = resultChunks.map(c => c.text).join('\n\n');
+  console.log(`[${new Date().toISOString()}] Compressed to ${compressed.length} chars.`);
+  return compressed;
 }
 
 async function _extractTextLocal(buffer, mimeType) {
@@ -200,35 +234,14 @@ async function _extractTextLocal(buffer, mimeType) {
         rawText = rawText.replace(/<[^>]+>/g, "\n");
       }
     }
-    return rawText
-      .replace(/(\w)-\n(\w)/g, '$1$2')
-      .replace(/\r\n/g, '\n')
-      .replace(/\n\s*\n/g, '\n\n')
-      .replace(/[ \t]+/g, ' ')
-      .trim();
+    return cleanText(rawText);
   } catch (err) {
     throw new Error(`Extraction failed: ${err.message}`);
   }
 }
 
-function chunkText(text, maxChars = 2000) {
-  if (!text) return [];
-  const paragraphs = text.split(/\n{2,}/);
-  const chunks = [];
-  let current = "";
-  for (const p of paragraphs) {
-    if ((current + p).length > maxChars && current) {
-      chunks.push(current.trim());
-      current = p;
-    } else {
-      current += (current ? "\n\n" : "") + p;
-    }
-  }
-  if (current) chunks.push(current.trim());
-  return chunks;
-}
+// --- API Routes ---
 
-// API Routes
 app.post('/api/generate', async (req, res) => {
   try {
     const text = await callLLM(req.body.prompt);
@@ -243,32 +256,30 @@ app.post('/api/generate-quiz', async (req, res) => {
   if (!content) return res.status(400).json({ error: "No content provided" });
 
   try {
-    // 1. Run RG (Smart Context) to filter noise and get high-yield content
-    const smartContent = getSmartContext(content, 6000);
+    // NLP Step: Reduce context to high-yield segments
+    const smartContent = getSmartContext(content, 8000); // 8k limit for quiz context
 
-    // 2. LLM Inference with Strict Taxonomy Prompt
     const prompt = `
       You are a ruthless exam gatekeeper.
-      Generate exactly 5 Multiple Choice Questions based on the text below.
+      Generate exactly 5 Multiple Choice Questions.
       
       STRICT REQUIREMENT:
-      You must generate exactly one question for EACH of these Bloom's Taxonomy levels, in this specific order:
-      1. Remembering (Recall specific facts/definitions)
-      2. Understanding (Explain main ideas/concepts)
-      3. Applying (Use the information in a new scenario)
-      4. Analyzing (Draw connections between parts)
-      5. Evaluating (Justify a decision or stand)
+      One question for EACH Bloom's Taxonomy level:
+      1. Remembering
+      2. Understanding
+      3. Applying
+      4. Analyzing
+      5. Evaluating
 
-      Output ONLY valid JSON.
-      Format:
+      Output ONLY valid JSON:
       {
         "questions": [
           {
-            "question": "Question text...",
+            "question": "...",
             "options": ["A", "B", "C", "D"],
-            "answer": "The text of the correct option", 
+            "answer": "Option Text", 
             "taxonomy": "Remembering",
-            "explanation": "Why this is correct."
+            "explanation": "..."
           }
         ]
       }
@@ -278,30 +289,34 @@ app.post('/api/generate-quiz', async (req, res) => {
     `;
 
     const rawResponse = await callLLM(prompt);
-    
-    // Clean response
     const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
-    const quizData = JSON.parse(cleanJson);
-
-    // Validate structure
-    if (!quizData.questions || quizData.questions.length !== 5) {
-       console.warn("LLM failed exact count. attempting to use what was returned.");
+    
+    // Safety parse
+    try {
+        const quizData = JSON.parse(cleanJson);
+        res.json(quizData);
+    } catch(e) {
+        console.error("JSON Parse Error:", cleanJson);
+        throw new Error("Model returned invalid JSON");
     }
 
-    res.json(quizData);
   } catch (e) {
     console.error("Quiz Generation Failed:", e);
-    res.status(500).json({ error: "Failed to generate gatekeeper quiz." });
+    res.status(500).json({ error: "Failed to generate quiz." });
   }
 });
 
 app.post('/api/generate-gauntlet', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, context } = req.body; // Context passed from frontend RAG
   if (!prompt) return res.status(400).json({ error: "No prompt provided" });
 
   try {
-    const rawResponse = await callLLM(prompt);
+    // If context provided, use it, otherwise rely on prompt
+    const fullPrompt = context ? `${prompt}\n\nReference Material:\n${getSmartContext(context, 10000)}` : prompt;
+    
+    const rawResponse = await callLLM(fullPrompt);
     const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
+    
     try {
       res.json(JSON.parse(cleanJson));
     } catch (parseError) {
@@ -326,33 +341,25 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   
   try {
-    const text = await _extractTextLocal(req.file.buffer, req.file.mimetype);
-    if (!text) throw new Error("No text extracted");
+    const rawText = await _extractTextLocal(req.file.buffer, req.file.mimetype);
+    if (!rawText) throw new Error("No text extracted");
 
-    const chunks = chunkText(text);
-    console.log(`[${new Date().toISOString()}] Processing ${chunks.length} chunks...`);
+    // Strategy: RAG-first processing
+    // Instead of chaining LLM calls on chunks, we use NLP to compress the text 
+    // to the most "information-dense" 25k characters, then run a single LLM pass.
+    
+    const compressedText = getSmartContext(rawText, 30000);
 
-    const chunkResponses = [];
-    const concurrency = 5;
-    for (let i = 0; i < chunks.length; i += concurrency) {
-      const batch = chunks.slice(i, i + concurrency);
-      const batchResults = await Promise.all(batch.map(chunk => 
-        callLLM(`Identify high-yield exam facts from: ${chunk.slice(0, 1500)}`).catch(e => "")
-      ));
-      chunkResponses.push(...batchResults);
-    }
+    const synthesisPrompt = `Synthesize this material into exactly 5 "Battle Units" (High-yield topics). 
     
-    const merged = chunkResponses.filter(Boolean).join('\n\n').slice(0, 15000); 
-    
-    // Strategy 2: Structural Compression Prompt
-    const synthesisPrompt = `Synthesize into exactly 5 "Battle Units" (topic + content). 
-    CRITICAL: 
-    1. Structure: Use JSON/Bullets for facts (Structural Compression).
-    2. Format: Use Markdown (## Headers, **bold terms**).
-    3. Density: High information density, no fluff.
-    
-    Return JSON: { "units": [{ "topic": "", "content": "" }] }. 
-    Source: ${merged}`;
+    CRITICAL INSTRUCTIONS:
+    1. Output JSON ONLY.
+    2. Format: { "units": [{ "topic": "Title", "content": "Markdown Content" }] }
+    3. Content Style: Use bullet points, bold keywords, and rigorous structure. No conversational fluff.
+    4. If text is fragmented, infer the logical structure.
+
+    Source Material:
+    ${compressedText}`;
     
     const rawSynth = await callLLM(synthesisPrompt);
     let finalNotes = [];
@@ -361,9 +368,14 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
     try {
       const jsonStr = rawSynth.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(jsonStr);
-      finalNotes = parsed.units.map(u => ({ topic: u.topic, content: u.content, source_chunks: [] }));
+      finalNotes = parsed.units.map(u => ({ 
+        topic: u.topic, 
+        content: u.content, 
+        source_chunks: [] // Metadata placeholder
+      }));
       fullText = finalNotes.map(n => `# ${n.topic}\n\n${n.content}`).join('\n\n');
     } catch (e) {
+      console.warn("JSON Parse Failed, falling back to raw text.");
       fullText = rawSynth;
       finalNotes = [{ topic: "Study Guide", content: rawSynth, source_chunks: [] }];
     }
@@ -381,7 +393,6 @@ app.post('/api/process-syllabus', upload.single('file'), async (req, res) => {
 });
 
 app.post("/api/webhook", async (req, res) => {
-    // Placeholder webhook for future integrations
     res.status(200).send("OK");
 });
 
