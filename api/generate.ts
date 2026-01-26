@@ -1,11 +1,3 @@
-
-// @ts-ignore
-import app from './server.js';
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-export default app;
+export default function handler(req, res) {
+  res.status(200).json({ message: "Static deployment only." });
+}

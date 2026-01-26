@@ -1,304 +1,108 @@
 
-import React, { useState, useEffect } from 'react';
-import LandingPage from './components/LandingPage';
-import Layout from './components/Layout';
-import NoteEngine from './components/NoteEngine';
-import AuthOverlay from './components/AuthOverlay';
-import PoliciesView from './components/PoliciesView';
-import PersonalTA from './components/PersonalTA';
-import { MockTestGenerator } from './components/MockTestGenerator';
-// import MasteryEngine from './components/MasteryEngine'; // Removed
-import StudyGroups from './components/StudyGroups'; // New import
-import Achievements from './components/Achievements'; // New import
-import { UserInfo, UserData, Session, NoteBlock, Chunk, StudyGroup, Badge, ChatMessage } from './types';
-import { Loader2 } from 'lucide-react';
-import { 
-  auth, 
-  db, 
-  updateFirestoreUser, 
-  ensureUserDoc, 
-  saveFirestoreSession, 
-  getFirestoreSessions,
-  deleteFirestoreSession,
-  getStudyGroupsForUser, // New import
-  getUserBadges, // New import
-  getSessionContent, // New import
-  subscribeToUserData // New import
-} from './services/firebase';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/react";
+import React, { useState, useMemo } from 'react';
+import { ConceptGraph } from './components/ConceptGraph';
+import { ConceptDetail } from './components/ConceptDetail';
+import { CONCEPTS, DEPENDENCIES } from './core/data/curriculum';
+import { UserConceptState } from './core/concept/schema';
+import { LayoutDashboard, Network, FileCode } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<'none' | 'login' | 'signup'>('none');
-  const [view, setView] = useState<'app' | 'policies'>('app');
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [userData, setUserData] = useState<UserData>({
-    total_analyses: 0,
-    badges: [], // Initialize
-    groupIds: [] // Initialize
-  });
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [studyGroups, setStudyGroups] = useState<StudyGroup[]>([]); // New state for study groups
-  const [userBadges, setUserBadges] = useState<Badge[]>([]); // New state for badges
-  const [activeTool, setActiveTool] = useState('notes');
-  const [allChunks, setAllChunks] = useState<Chunk[]>([]);
-  const [activeSessionNotes, setActiveSessionNotes] = useState<NoteBlock[] | undefined>();
-  const [sessionChatHistory, setSessionChatHistory] = useState<ChatMessage[]>([]); // New: Lifted chat state
-  const [isFetchingContent, setIsFetchingContent] = useState(false);
-
-  // Dark mode effect
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
-
-  // Auth Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userInfo: UserInfo = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Student',
-          given_name: firebaseUser.displayName?.split(' ')[0] || 'Student',
-          email: firebaseUser.email || '',
-          picture: `https://picsum.photos/100/100?seed=${firebaseUser.uid}`
-        };
-        setUser(userInfo);
-
-        const initialData: UserData = {
-          total_analyses: 0,
-          badges: [],
-          groupIds: []
-        };
-        
-        try {
-          await ensureUserDoc(firebaseUser.uid, initialData);
-          const userSessions = await getFirestoreSessions(firebaseUser.uid);
-          setSessions(userSessions);
-
-          const userGroups = await getStudyGroupsForUser(firebaseUser.uid); // Fetch groups
-          setStudyGroups(userGroups);
-
-          const fetchedBadges = await getUserBadges(firebaseUser.uid); // Fetch badges
-          setUserBadges(fetchedBadges);
-
-          const unsubDoc = subscribeToUserData(firebaseUser.uid, (data) => {
-             setUserData(data);
-             setUserBadges(data.badges || []); // Update badges from snapshot
-          });
-
-          setLoading(false);
-          return () => unsubDoc();
-        } catch (err) {
-          console.error("Error ensuring user doc or fetching data:", err);
-          setLoading(false);
-        }
-      } else {
-        setUser(null);
-        setSessions([]);
-        setStudyGroups([]); // Clear groups
-        setUserBadges([]); // Clear badges
-        setLoading(false);
-      }
+  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+  
+  // Mock Database in Local State
+  const [userConceptStates, setUserConceptStates] = useState<Record<string, UserConceptState>>(() => {
+    const initial: Record<string, UserConceptState> = {};
+    CONCEPTS.forEach(c => {
+      initial[c.id] = {
+        user_id: 'guest',
+        concept_id: c.id,
+        mastery: 0.0,
+        confusion_vectors: [],
+        is_confused: false,
+        signals: { replays: 0, quiz_failures: 0, hesitation_time: 0, report_count: 0 }
+      };
     });
+    return initial;
+  });
 
-    return () => unsubscribe();
-  }, []);
+  const selectedConcept = useMemo(() => 
+    CONCEPTS.find(c => c.id === selectedConceptId), 
+  [selectedConceptId]);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setAllChunks([]);
-      setSessions([]);
-      setStudyGroups([]); // Clear groups
-      setUserBadges([]); // Clear badges
-      setActiveSessionNotes(undefined);
-      setSessionChatHistory([]);
-      setActiveTool('notes');
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
+  const handleReportConfusion = (conceptId: string, reason: string) => {
+    setUserConceptStates(prev => {
+      const current = prev[conceptId];
+      return {
+        ...prev,
+        [conceptId]: {
+          ...current,
+          is_confused: true,
+          confusion_vectors: [...current.confusion_vectors, reason],
+          signals: {
+            ...current.signals,
+            report_count: current.signals.report_count + 1
+          }
+        }
+      };
+    });
   };
-
-  const handleSaveSession = async (notes: NoteBlock[], fullTextContent: string) => {
-    if (!user) return;
-
-    const newSession: Session = {
-      id: `session_${Date.now()}`,
-      timestamp: new Date().toLocaleString(),
-      title: notes[0]?.topic || "Untitled Session",
-      notes
-    };
-
-    try {
-      await saveFirestoreSession(user.id, newSession);
-      await updateFirestoreUser(user.id, {
-        total_analyses: (userData.total_analyses || 0) + 1
-      });
-      // Update local state with the new session, containing full notes initially for immediate display
-      setSessions(prev => [newSession, ...prev]);
-      setActiveSessionNotes(notes);
-      setSessionChatHistory([]); // Reset chat for new session
-    } catch (err) {
-      console.error("Failed to save session:", err);
-    }
-  };
-
-  const handleSessionSelect = async (id: string) => {
-    if (!user) return;
-
-    // Reset chat when switching sessions (optional, or could fetch saved chat)
-    setSessionChatHistory([]);
-
-    // First check if we already have the full notes in memory (optimization for just-saved session)
-    const session = sessions.find(s => s.id === id);
-    if (!session) return;
-    
-    // Check if the current session object has content. If it does (e.g. just saved), use it.
-    if (session.notes.length > 0 && session.notes[0].content && session.notes[0].content.length > 0) {
-      setActiveSessionNotes(session.notes);
-      setActiveTool('notes');
-      return;
-    }
-
-    // Otherwise fetch content from Firestore
-    setIsFetchingContent(true);
-    try {
-      const content = await getSessionContent(user.id, id);
-      setActiveSessionNotes(content);
-      setActiveTool('notes');
-    } catch (err) {
-      console.error("Failed to fetch session content:", err);
-      // Fallback: use what we have (likely empty content, but prevents crash)
-      setActiveSessionNotes(session.notes);
-      setActiveTool('notes');
-    } finally {
-      setIsFetchingContent(false);
-    }
-  };
-
-  const handleSessionDelete = async (id: string) => {
-    if (!user) return;
-    try {
-      await deleteFirestoreSession(user.id, id);
-      setSessions(prev => prev.filter(s => s.id !== id));
-      if (activeSessionNotes && activeSessionNotes[0]?.topic === sessions.find(s => s.id === id)?.notes[0]?.topic) {
-        setActiveSessionNotes(undefined);
-        setSessionChatHistory([]);
-      }
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="animate-spin text-blue-600" size={48} />
-        <p className="text-gray-500 dark:text-gray-400 font-medium">Synchronizing Workspace...</p>
-      </div>
-    );
-  }
-
-  if (view === 'policies') {
-    return <PoliciesView onBack={() => setView('app')} />;
-  }
-
-  if (!user) {
-    return (
-      <>
-        {/* Vercel Analytics & Speed Insights */}
-        <Analytics />
-        <SpeedInsights />
-        
-        <LandingPage 
-          onLogin={() => setAuthMode('login')} 
-          onViewPolicies={() => setView('policies')} 
-        />
-        {authMode !== 'none' && (
-          <AuthOverlay 
-            initialMode={authMode === 'login' ? 'login' : 'signup'} 
-            onClose={() => setAuthMode('none')} 
-          />
-        )}
-      </>
-    );
-  }
-
-  const layoutUserData = { ...userData, sessions };
 
   return (
-    <>
-      {/* Vercel Analytics & Speed Insights */}
-      <Analytics />
-      <SpeedInsights />
+    <div className="flex h-screen bg-white font-sans text-gray-900 overflow-hidden">
+      
+      {/* Sidebar / Navigation */}
+      <aside className="w-16 flex flex-col items-center py-6 border-r border-gray-200 bg-gray-50 z-20">
+        <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center text-white font-bold text-xl mb-8">
+          OS
+        </div>
+        <nav className="space-y-4">
+          <button className="p-3 bg-white border border-gray-200 rounded-xl text-blue-600 shadow-sm">
+            <Network size={20} />
+          </button>
+          <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+            <LayoutDashboard size={20} />
+          </button>
+          <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+            <FileCode size={20} />
+          </button>
+        </nav>
+      </aside>
 
-      <Layout 
-        user={user} 
-        userData={layoutUserData} 
-        onLogout={handleLogout} 
-        onToolSelect={setActiveTool} 
-        activeTool={activeTool}
-        onSessionSelect={handleSessionSelect}
-        onSessionDelete={handleSessionDelete}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-      >
-        <div className="h-full relative">
-          {isFetchingContent && (
-             <div className="absolute inset-0 bg-white/80 dark:bg-gray-950/80 z-50 flex items-center justify-center">
-                <Loader2 className="animate-spin text-blue-600" size={32} />
-             </div>
-          )}
-          {activeTool === 'notes' && (
-            <NoteEngine 
-              allChunks={allChunks} 
-              userData={userData}
-              setAllChunks={setAllChunks} 
-              onSaveSession={handleSaveSession}
-              savedNotes={activeSessionNotes}
-              userPicture={user.picture}
-              userId={user.id}
-              chatHistory={sessionChatHistory}
-              onChatUpdate={setSessionChatHistory}
+      {/* Main Content Area */}
+      <div className="flex-1 flex relative">
+        
+        {/* Graph Visualizer */}
+        <div className="flex-1 relative">
+          <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur border border-gray-200 p-3 rounded-lg shadow-sm">
+            <h2 className="text-sm font-bold text-gray-900">Concept Graph</h2>
+            <p className="text-xs text-gray-500">Machine Learning (v1.0)</p>
+          </div>
+          <ConceptGraph 
+            concepts={CONCEPTS} 
+            dependencies={DEPENDENCIES} 
+            onConceptSelect={setSelectedConceptId}
+            userStates={userConceptStates}
+          />
+        </div>
+
+        {/* Right Panel: Details / Compiler Output */}
+        <div className={`w-[450px] border-l border-gray-200 bg-white shadow-xl transform transition-transform duration-300 absolute right-0 top-0 bottom-0 z-10
+          ${selectedConcept ? 'translate-x-0' : 'translate-x-full'}`}>
+          {selectedConcept ? (
+            <ConceptDetail 
+              concept={selectedConcept}
+              userState={userConceptStates[selectedConcept.id]}
+              onReportConfusion={handleReportConfusion}
             />
-          )}
-          {activeTool === 'ta' && (
-            <PersonalTA 
-              sessions={sessions} 
-              studyGroups={studyGroups} // Pass study groups
-              userBadges={userBadges} // Pass badges
-            />
-          )}
-          {activeTool === 'mock' && (
-            <MockTestGenerator 
-              notes={activeSessionNotes} 
-              chatHistory={sessionChatHistory} 
-            />
-          )}
-          {activeTool === 'groups' && user && ( // Render StudyGroups component
-            <StudyGroups 
-              user={user} 
-              userStudyGroups={studyGroups} 
-              setUserStudyGroups={setStudyGroups}
-            />
-          )}
-          {activeTool === 'achievements' && user && ( // Render Achievements component
-            <Achievements 
-              userBadges={userBadges} 
-            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              Select a concept
+            </div>
           )}
         </div>
-      </Layout>
-    </>
+
+      </div>
+    </div>
   );
 };
 

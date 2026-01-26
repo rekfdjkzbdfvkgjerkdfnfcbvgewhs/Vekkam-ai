@@ -1,10 +1,4 @@
-
-import app from './server.js';
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-export default app;
+// Backend disabled for static site deployment.
+export default function handler(req, res) {
+  res.status(200).json({ message: "Static deployment only." });
+}
