@@ -9,7 +9,7 @@ interface MockTestGeneratorProps {
   chatHistory?: ChatMessage[];
 }
 
-export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, chatHistory = [] }) => {
+const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, chatHistory = [] }) => {
   const [syllabus, setSyllabus] = useState('');
   const [loading, setLoading] = useState(false);
   const [test, setTest] = useState<any>(null);
@@ -293,3 +293,5 @@ export const MockTestGenerator: React.FC<MockTestGeneratorProps> = ({ notes, cha
     </div>
   );
 };
+
+export default MockTestGenerator;

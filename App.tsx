@@ -1,108 +1,128 @@
-
-import React, { useState, useMemo } from 'react';
-import { ConceptGraph } from './components/ConceptGraph';
-import { ConceptDetail } from './components/ConceptDetail';
-import { CONCEPTS, DEPENDENCIES } from './core/data/curriculum';
-import { UserConceptState } from './core/concept/schema';
-import { LayoutDashboard, Network, FileCode } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, ensureUserDoc, subscribeToUserData, getFirestoreSessions, getStudyGroupsForUser } from './services/firebase';
+import Layout from './components/Layout';
+import LandingPage from './components/LandingPage';
+import AuthOverlay from './components/AuthOverlay';
+import PoliciesView from './components/PoliciesView';
+import PersonalTA from './components/PersonalTA';
+import VideoGenerator from './components/VideoGenerator';
+import { UserInfo, UserData, Session, StudyGroup } from './types';
 
 const App: React.FC = () => {
-  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
-  
-  // Mock Database in Local State
-  const [userConceptStates, setUserConceptStates] = useState<Record<string, UserConceptState>>(() => {
-    const initial: Record<string, UserConceptState> = {};
-    CONCEPTS.forEach(c => {
-      initial[c.id] = {
-        user_id: 'guest',
-        concept_id: c.id,
-        mastery: 0.0,
-        confusion_vectors: [],
-        is_confused: false,
-        signals: { replays: 0, quiz_failures: 0, hesitation_time: 0, report_count: 0 }
-      };
-    });
-    return initial;
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [userData, setUserData] = useState<UserData & { sessions: Session[] }>({ 
+    total_analyses: 0, 
+    sessions: [],
+    badges: [],
+    groupIds: []
   });
+  const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | null>(null);
+  const [showPolicies, setShowPolicies] = useState(false);
+  const [activeTool, setActiveTool] = useState('ta');
+  
+  // Study Groups State (Needed for context in TA)
+  const [userStudyGroups, setUserStudyGroups] = useState<StudyGroup[]>([]);
+  const [darkMode, setDarkMode] = useState(false);
 
-  const selectedConcept = useMemo(() => 
-    CONCEPTS.find(c => c.id === selectedConceptId), 
-  [selectedConceptId]);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userInfo: UserInfo = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Student',
+          email: firebaseUser.email || '',
+          picture: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName || 'User'}&background=random`,
+          given_name: firebaseUser.displayName?.split(' ')[0] || 'Student'
+        };
+        setUser(userInfo);
+        
+        await ensureUserDoc(firebaseUser.uid, { total_analyses: 0 });
 
-  const handleReportConfusion = (conceptId: string, reason: string) => {
-    setUserConceptStates(prev => {
-      const current = prev[conceptId];
-      return {
-        ...prev,
-        [conceptId]: {
-          ...current,
-          is_confused: true,
-          confusion_vectors: [...current.confusion_vectors, reason],
-          signals: {
-            ...current.signals,
-            report_count: current.signals.report_count + 1
-          }
+        subscribeToUserData(firebaseUser.uid, async (data) => {
+           const sessions = await getFirestoreSessions(firebaseUser.uid);
+           setUserData({ ...data, sessions });
+        });
+        
+        try {
+          const groups = await getStudyGroupsForUser(firebaseUser.uid);
+          setUserStudyGroups(groups);
+        } catch (e) {
+          console.error("Failed to load study groups", e);
         }
-      };
+
+      } else {
+        setUser(null);
+        setUserData({ total_analyses: 0, sessions: [], badges: [], groupIds: [] });
+      }
+      setLoading(false);
     });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const handleLogout = async () => {
+    await auth.signOut();
+    setUser(null);
   };
 
-  return (
-    <div className="flex h-screen bg-white font-sans text-gray-900 overflow-hidden">
-      
-      {/* Sidebar / Navigation */}
-      <aside className="w-16 flex flex-col items-center py-6 border-r border-gray-200 bg-gray-50 z-20">
-        <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center text-white font-bold text-xl mb-8">
-          OS
-        </div>
-        <nav className="space-y-4">
-          <button className="p-3 bg-white border border-gray-200 rounded-xl text-blue-600 shadow-sm">
-            <Network size={20} />
-          </button>
-          <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
-            <LayoutDashboard size={20} />
-          </button>
-          <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
-            <FileCode size={20} />
-          </button>
-        </nav>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex relative">
-        
-        {/* Graph Visualizer */}
-        <div className="flex-1 relative">
-          <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur border border-gray-200 p-3 rounded-lg shadow-sm">
-            <h2 className="text-sm font-bold text-gray-900">Concept Graph</h2>
-            <p className="text-xs text-gray-500">Machine Learning (v1.0)</p>
-          </div>
-          <ConceptGraph 
-            concepts={CONCEPTS} 
-            dependencies={DEPENDENCIES} 
-            onConceptSelect={setSelectedConceptId}
-            userStates={userConceptStates}
-          />
-        </div>
-
-        {/* Right Panel: Details / Compiler Output */}
-        <div className={`w-[450px] border-l border-gray-200 bg-white shadow-xl transform transition-transform duration-300 absolute right-0 top-0 bottom-0 z-10
-          ${selectedConcept ? 'translate-x-0' : 'translate-x-full'}`}>
-          {selectedConcept ? (
-            <ConceptDetail 
-              concept={selectedConcept}
-              userState={userConceptStates[selectedConcept.id]}
-              onReportConfusion={handleReportConfusion}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              Select a concept
-            </div>
-          )}
-        </div>
-
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white dark:bg-black">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
-    </div>
+    );
+  }
+
+  if (showPolicies) return <PoliciesView onBack={() => setShowPolicies(false)} />;
+
+  if (!user) {
+    return (
+      <>
+        <LandingPage 
+          onLogin={() => setAuthMode('login')} 
+          onViewPolicies={() => setShowPolicies(true)} 
+        />
+        {authMode && (
+          <AuthOverlay 
+            initialMode={authMode} 
+            onClose={() => setAuthMode(null)} 
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <Layout 
+      user={user} 
+      userData={userData} 
+      onLogout={handleLogout}
+      onToolSelect={setActiveTool}
+      activeTool={activeTool}
+      darkMode={darkMode}
+      onToggleDarkMode={() => setDarkMode(!darkMode)}
+    >
+      {activeTool === 'ta' && (
+        <PersonalTA 
+          sessions={userData.sessions}
+          studyGroups={userStudyGroups}
+          userBadges={userData.badges}
+        />
+      )}
+      {activeTool === 'video' && (
+        <VideoGenerator />
+      )}
+    </Layout>
   );
 };
 
